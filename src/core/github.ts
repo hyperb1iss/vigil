@@ -543,7 +543,14 @@ export async function fetchMyOpenPrs(
         prMap.set(pr.key, pr); // overwrite search stub with full detail
       }
     } catch {
-      // If detail fetch fails for a repo, we keep the search-pass stubs
+      // If detail fetch fails, carry forward known data to prevent state degradation
+      if (knownPrs) {
+        for (const [key, pr] of knownPrs) {
+          if (key.startsWith(`${nameWithOwner}#`)) {
+            prMap.set(key, pr);
+          }
+        }
+      }
     }
   });
 

@@ -15,6 +15,7 @@ import {
   stateIndicators,
   stateLabels,
   timeAgo,
+  truncate,
 } from './theme.js';
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -22,270 +23,393 @@ import {
 /** Lines reserved for: header card (~5) + keybind bar (2) + scroll indicator (1) */
 const CHROME_LINES = 8;
 
+// ─── Markup Stripping ────────────────────────────────────────────────
+
+/** Strip HTML tags, comments, and markdown formatting from text */
+function stripMarkup(text: string): string {
+  return text
+    .replace(/<!--[\s\S]*?-->/g, '') // HTML comments
+    .replace(/<[^>]+>/g, '') // HTML tags
+    .replace(/\*\*(.+?)\*\*/g, '$1') // **bold**
+    .replace(/__(.+?)__/g, '$1') // __bold__
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url)
+    .replace(/#{1,6}\s/g, '') // ## headers
+    .replace(/\n{3,}/g, '\n\n') // collapse excessive newlines
+    .trim();
+}
+
+/** Check if a comment is purely bot noise (hidden summaries, link-backs, etc.) */
+function isBotNoise(body: string): boolean {
+  const stripped = stripMarkup(body);
+  // Empty after stripping
+  if (stripped.length === 0) return true;
+  // Common bot patterns that produce no useful content
+  if (/^[\s\n]*$/.test(stripped)) return true;
+  return false;
+}
+
 // ─── Content Line Builder ────────────────────────────────────────────
 
-/** A single renderable line in the virtual scroll list */
+/** A single renderable element in the virtual scroll list */
 interface ContentLine {
   key: string;
   element: JSX.Element;
 }
 
-function sectionHeader(title: string, width: number): ContentLine {
-  const lineLen = Math.max(0, width - title.length - 4);
-  return {
-    key: `section-${title}`,
-    element: (
-      <Box paddingTop={1}>
+// ─── Reviews Card ────────────────────────────────────────────────────
+
+function ReviewsCard({
+  reviews,
+  width,
+}: {
+  reviews: PrReview[];
+  width: number;
+}): JSX.Element {
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={palette.dimmed}
+      paddingX={1}
+      width={width}
+    >
+      {/* Card header */}
+      <Box>
         <Text color={palette.electricPurple} bold>
-          {'\u2500\u2500 '}
-          {title}{' '}
+          Reviews
         </Text>
-        <Text color={semantic.dim}>{'\u2500'.repeat(lineLen)}</Text>
+        <Text color={semantic.muted}> ({reviews.length})</Text>
       </Box>
-    ),
-  };
-}
 
-function buildReviewLines(reviews: PrReview[]): ContentLine[] {
-  if (reviews.length === 0) {
-    return [
-      {
-        key: 'reviews-empty',
-        element: (
-          <Text color={semantic.muted} italic>
-            {'  '}No reviews yet
-          </Text>
-        ),
-      },
-    ];
-  }
+      {reviews.length === 0 ? (
+        <Text color={semantic.dim} italic>
+          No reviews yet
+        </Text>
+      ) : (
+        <Box flexDirection="column">
+          {reviews.map(review => {
+            const stateColor =
+              review.state === 'APPROVED'
+                ? semantic.success
+                : review.state === 'CHANGES_REQUESTED'
+                  ? semantic.error
+                  : semantic.muted;
+            const symbol =
+              review.state === 'APPROVED'
+                ? checkIndicators.passing.symbol
+                : review.state === 'CHANGES_REQUESTED'
+                  ? checkIndicators.failing.symbol
+                  : checkIndicators.pending.symbol;
+            const stateText = review.state === 'CHANGES_REQUESTED'
+              ? 'changes'
+              : review.state.toLowerCase();
 
-  const lines: ContentLine[] = [];
-  for (const review of reviews) {
-    const stateColor =
-      review.state === 'APPROVED'
-        ? semantic.success
-        : review.state === 'CHANGES_REQUESTED'
-          ? semantic.error
-          : semantic.warning;
-    const symbol =
-      review.state === 'APPROVED'
-        ? checkIndicators.passing.symbol
-        : review.state === 'CHANGES_REQUESTED'
-          ? checkIndicators.failing.symbol
-          : checkIndicators.pending.symbol;
-
-    lines.push({
-      key: `review-${review.id}`,
-      element: (
-        <Box gap={1} paddingLeft={1}>
-          <Text color={stateColor} bold>
-            {symbol}
-          </Text>
-          <Text color={palette.neonCyan}>{review.author.login}</Text>
-          <Text color={semantic.muted}>{review.state.toLowerCase().replace('_', ' ')}</Text>
-          <Text color={semantic.timestamp} dimColor>
-            {timeAgo(review.submittedAt)}
-          </Text>
+            return (
+              <Box key={review.id} gap={1}>
+                <Text color={stateColor}>{symbol}</Text>
+                <Text color={palette.neonCyan} bold>
+                  {truncate(review.author.login, 18)}
+                </Text>
+                <Box flexGrow={1}>
+                  <Text color={semantic.dim}>{stateText}</Text>
+                </Box>
+                <Text color={semantic.timestamp} dimColor>
+                  {timeAgo(review.submittedAt)}
+                </Text>
+              </Box>
+            );
+          })}
         </Box>
-      ),
-    });
-
-    // Show first line of review body if present
-    if (review.body.trim().length > 0) {
-      const firstLine = review.body.trim().split('\n')[0] ?? '';
-      const truncated = firstLine.length > 80 ? `${firstLine.slice(0, 79)}\u2026` : firstLine;
-      lines.push({
-        key: `review-body-${review.id}`,
-        element: (
-          <Text color={semantic.dim} wrap="truncate-end">
-            {'    > "'}
-            {truncated}
-            {'"'}
-          </Text>
-        ),
-      });
-    }
-  }
-
-  return lines;
+      )}
+    </Box>
+  );
 }
 
-function buildCheckLines(checks: PrCheck[]): ContentLine[] {
-  if (checks.length === 0) {
-    return [
-      {
-        key: 'checks-empty',
-        element: (
-          <Text color={semantic.muted} italic>
-            {'  '}No CI checks
-          </Text>
-        ),
-      },
-    ];
-  }
+// ─── CI Checks Card ─────────────────────────────────────────────────
 
-  const lines: ContentLine[] = [];
-
-  // Summary bar
+function ChecksCard({
+  checks,
+  width,
+}: {
+  checks: PrCheck[];
+  width: number;
+}): JSX.Element {
   const total = checks.length;
-  const passed = checks.filter(
+  const passing = checks.filter(
     c =>
       c.status === 'COMPLETED' &&
       (c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED')
-  ).length;
-  const failed = checks.filter(
+  );
+  const failing = checks.filter(
     c => c.status === 'COMPLETED' && c.conclusion === 'FAILURE'
-  ).length;
-  const running = total - passed - failed;
+  );
+  const running = checks.filter(c => c.status !== 'COMPLETED');
 
-  const ciWidth = 10;
-  const passN = Math.round((passed / total) * ciWidth);
-  const failN = Math.round((failed / total) * ciWidth);
-  const runN = Math.min(ciWidth - passN - failN, running > 0 ? ciWidth : 0);
-  const emptyN = ciWidth - passN - failN - runN;
+  // CI summary bar
+  const ciWidth = 12;
+  const passN = total > 0 ? Math.round((passing.length / total) * ciWidth) : 0;
+  const failN = total > 0 ? Math.round((failing.length / total) * ciWidth) : 0;
+  const runN = Math.min(ciWidth - passN - failN, running.length > 0 ? ciWidth : 0);
+  const emptyN = Math.max(0, ciWidth - passN - failN - runN);
 
-  lines.push({
-    key: 'checks-summary',
-    element: (
-      <Box paddingLeft={1} gap={1}>
-        <Text color={semantic.dim}>CI </Text>
-        <Text>
-          {passN > 0 && <Text color={semantic.success}>{'\u2588'.repeat(passN)}</Text>}
-          {failN > 0 && <Text color={semantic.error}>{'\u2588'.repeat(failN)}</Text>}
-          {runN > 0 && <Text color={semantic.warning}>{'\u2588'.repeat(runN)}</Text>}
-          {emptyN > 0 && <Text color={semantic.dim}>{'\u2591'.repeat(emptyN)}</Text>}
+  const countColor =
+    failing.length > 0
+      ? semantic.error
+      : passing.length === total
+        ? semantic.success
+        : semantic.warning;
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={palette.dimmed}
+      paddingX={1}
+      width={width}
+    >
+      {/* Card header with inline CI bar */}
+      <Box gap={1}>
+        <Text color={palette.electricPurple} bold>
+          CI
         </Text>
-        <Text color={failed > 0 ? semantic.error : passed === total ? semantic.success : semantic.warning}>
-          {passed}/{total}
-        </Text>
+        {total === 0 ? (
+          <Text color={semantic.dim}>{'─'.repeat(ciWidth)}</Text>
+        ) : (
+          <>
+            <Text>
+              {passN > 0 && <Text color={semantic.success}>{'\u2588'.repeat(passN)}</Text>}
+              {failN > 0 && <Text color={semantic.error}>{'\u2588'.repeat(failN)}</Text>}
+              {runN > 0 && <Text color={semantic.warning}>{'\u2588'.repeat(runN)}</Text>}
+              {emptyN > 0 && <Text color={semantic.dim}>{'\u2591'.repeat(emptyN)}</Text>}
+            </Text>
+            <Text color={countColor} bold>
+              {passing.length}/{total}
+            </Text>
+          </>
+        )}
       </Box>
-    ),
-  });
 
-  // Individual checks
-  for (const check of checks) {
-    const indicator =
-      check.status !== 'COMPLETED'
-        ? checkIndicators.pending
-        : check.conclusion === 'SUCCESS' ||
-            check.conclusion === 'NEUTRAL' ||
-            check.conclusion === 'SKIPPED'
-          ? checkIndicators.passing
-          : checkIndicators.failing;
-
-    const statusText =
-      check.status === 'COMPLETED' ? (check.conclusion?.toLowerCase() ?? '') : 'running';
-    const statusColor = check.status === 'COMPLETED' ? semantic.muted : semantic.warning;
-
-    lines.push({
-      key: `check-${check.name}`,
-      element: (
-        <Box gap={1} paddingLeft={1}>
-          <Text color={indicator.color}>{indicator.symbol}</Text>
-          <Text color={palette.fg}>{check.name}</Text>
-          <Text color={statusColor} dimColor>
-            {statusText}
-          </Text>
-        </Box>
-      ),
-    });
-  }
-
-  return lines;
-}
-
-function buildCommentLines(comments: PrComment[]): ContentLine[] {
-  if (comments.length === 0) {
-    return [
-      {
-        key: 'comments-empty',
-        element: (
-          <Text color={semantic.muted} italic>
-            {'  '}No comments
-          </Text>
-        ),
-      },
-    ];
-  }
-
-  const lines: ContentLine[] = [];
-  const shown = comments.slice(-8);
-  const hiddenCount = comments.length - shown.length;
-
-  for (const comment of shown) {
-    // Author + timestamp line
-    lines.push({
-      key: `comment-header-${comment.id}`,
-      element: (
-        <Box gap={1} paddingLeft={1}>
-          <Text color={palette.neonCyan} bold>
-            {comment.author.login}
-          </Text>
-          <Text color={semantic.timestamp} dimColor>
-            {timeAgo(comment.createdAt)}
-          </Text>
-        </Box>
-      ),
-    });
-
-    // Body lines (up to 3)
-    const bodyLines = comment.body
-      .replace(/\r\n/g, '\n')
-      .split('\n')
-      .filter(l => l.trim().length > 0)
-      .slice(0, 3);
-
-    for (let i = 0; i < bodyLines.length; i++) {
-      const line = bodyLines[i] ?? '';
-      const truncated = line.length > 100 ? `${line.slice(0, 99)}\u2026` : line;
-      lines.push({
-        key: `comment-body-${comment.id}-${i}`,
-        element: (
-          <Text color={semantic.muted} wrap="truncate-end">
-            {'    '}
-            {truncated}
-          </Text>
-        ),
-      });
-    }
-  }
-
-  if (hiddenCount > 0) {
-    lines.push({
-      key: 'comments-more',
-      element: (
-        <Text color={semantic.dim} dimColor>
-          {'  '}
-          {icons.ellipsis} and {hiddenCount} more
+      {total === 0 ? (
+        <Text color={semantic.dim} italic>
+          No CI checks
         </Text>
-      ),
-    });
-  }
+      ) : (
+        <Box flexDirection="column">
+          {/* Show failing checks individually */}
+          {failing.map(check => (
+            <Box key={check.name} gap={1}>
+              <Text color={checkIndicators.failing.color}>{checkIndicators.failing.symbol}</Text>
+              <Text color={palette.fg}>{truncate(check.name, width - 10)}</Text>
+            </Box>
+          ))}
 
-  return lines;
+          {/* Show running checks individually */}
+          {running.map(check => (
+            <Box key={check.name} gap={1}>
+              <Text color={checkIndicators.pending.color}>{checkIndicators.pending.symbol}</Text>
+              <Text color={palette.fg}>{truncate(check.name, width - 18)}</Text>
+              <Text color={semantic.warning} dimColor>
+                running
+              </Text>
+            </Box>
+          ))}
+
+          {/* Divider between individual + collapsed */}
+          {(failing.length > 0 || running.length > 0) && passing.length > 0 && (
+            <Text color={semantic.dim}>
+              {'\u2500'.repeat(Math.max(0, Math.min(width - 6, 30)))}
+            </Text>
+          )}
+
+          {/* Collapse passing into summary */}
+          {passing.length > 0 && (
+            <Box gap={1}>
+              <Text color={checkIndicators.passing.color}>{checkIndicators.passing.symbol}</Text>
+              <Text color={semantic.success}>
+                {passing.length} check{passing.length !== 1 ? 's' : ''} passing
+              </Text>
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
 }
 
-function buildLabelLines(labels: PrLabel[]): ContentLine[] {
-  if (labels.length === 0) return [];
+// ─── Comments Card ──────────────────────────────────────────────────
 
-  return [
-    {
-      key: 'labels',
-      element: (
-        <Box paddingLeft={1} gap={1}>
-          {labels.map(label => (
-            <Text key={label.id} color={label.color ? `#${label.color}` : semantic.muted}>
-              {label.name}
+function CommentsCard({
+  comments,
+  width,
+}: {
+  comments: PrComment[];
+  width: number;
+}): JSX.Element {
+  // Filter out bot noise, show human-readable comments
+  const meaningful = comments.filter(c => !isBotNoise(c.body));
+  const shown = meaningful.slice(-5);
+  const hiddenCount = meaningful.length - shown.length;
+  const bodyMaxLen = Math.max(40, width - 12);
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={palette.dimmed}
+      paddingX={1}
+      width={width}
+    >
+      {/* Card header */}
+      <Box>
+        <Text color={palette.electricPurple} bold>
+          Comments
+        </Text>
+        <Text color={semantic.muted}> ({meaningful.length})</Text>
+        {comments.length !== meaningful.length && (
+          <Text color={semantic.dim} dimColor>
+            {' '}
+            {icons.middleDot} {comments.length - meaningful.length} bot
+          </Text>
+        )}
+      </Box>
+
+      {meaningful.length === 0 ? (
+        <Text color={semantic.dim} italic>
+          No comments
+        </Text>
+      ) : (
+        <Box flexDirection="column">
+          {shown.map((comment, idx) => {
+            const stripped = stripMarkup(comment.body);
+            const bodyLines = stripped
+              .split('\n')
+              .filter(l => l.trim().length > 0)
+              .slice(0, 2);
+
+            return (
+              <Box key={comment.id} flexDirection="column" {...(idx > 0 ? { paddingTop: 1 } : {})}>
+                {/* Author + time */}
+                <Box gap={1}>
+                  <Text color={palette.neonCyan} bold>
+                    {comment.author.login}
+                  </Text>
+                  <Text color={semantic.dim}>{icons.middleDot}</Text>
+                  <Text color={semantic.timestamp} dimColor>
+                    {timeAgo(comment.createdAt)}
+                  </Text>
+                </Box>
+                {/* Body (stripped, up to 2 lines) */}
+                {bodyLines.map((line, i) => (
+                  <Text key={i} color={semantic.muted} wrap="truncate-end">
+                    {'  '}
+                    {truncate(line, bodyMaxLen)}
+                  </Text>
+                ))}
+              </Box>
+            );
+          })}
+
+          {hiddenCount > 0 && (
+            <Box paddingTop={1}>
+              <Text color={semantic.dim}>
+                {icons.ellipsis} and {hiddenCount} more
+              </Text>
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─── Labels Card ────────────────────────────────────────────────────
+
+function LabelsCard({
+  labels,
+  width,
+}: {
+  labels: PrLabel[];
+  width: number;
+}): JSX.Element {
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={palette.dimmed}
+      paddingX={1}
+      width={width}
+    >
+      <Box gap={2}>
+        <Text color={palette.electricPurple} bold>
+          Labels
+        </Text>
+        <Text wrap="truncate-end">
+          {labels.map((label, i) => (
+            <Text key={label.id}>
+              {i > 0 && <Text color={semantic.dim}> {icons.middleDot} </Text>}
+              <Text color={label.color ? `#${label.color}` : semantic.muted}>{label.name}</Text>
             </Text>
           ))}
-        </Box>
-      ),
-    },
-  ];
+        </Text>
+      </Box>
+    </Box>
+  );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────
+// ─── Content Line Builders ──────────────────────────────────────────
+
+function buildSectionCards(
+  reviews: PrReview[],
+  checks: PrCheck[],
+  comments: PrComment[],
+  labels: PrLabel[],
+  contentWidth: number,
+  isWide: boolean
+): ContentLine[] {
+  const lines: ContentLine[] = [];
+
+  if (isWide) {
+    // Two-column: Reviews + CI side by side
+    const halfWidth = Math.floor((contentWidth - 1) / 2);
+    lines.push({
+      key: 'reviews-and-ci',
+      element: (
+        <Box gap={1}>
+          <ReviewsCard reviews={reviews} width={halfWidth} />
+          <ChecksCard checks={checks} width={halfWidth} />
+        </Box>
+      ),
+    });
+  } else {
+    // Stacked: Reviews then CI
+    lines.push({
+      key: 'reviews-card',
+      element: <ReviewsCard reviews={reviews} width={contentWidth} />,
+    });
+    lines.push({
+      key: 'checks-card',
+      element: <ChecksCard checks={checks} width={contentWidth} />,
+    });
+  }
+
+  // Comments (always full width)
+  lines.push({
+    key: 'comments-card',
+    element: <CommentsCard comments={comments} width={contentWidth} />,
+  });
+
+  // Labels (if any)
+  if (labels.length > 0) {
+    lines.push({
+      key: 'labels-card',
+      element: <LabelsCard labels={labels} width={contentWidth} />,
+    });
+  }
+
+  return lines;
+}
+
+// ─── Main Component ─────────────────────────────────────────────────
 
 export function PrDetail(): JSX.Element | null {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
@@ -296,7 +420,8 @@ export function PrDetail(): JSX.Element | null {
   const { stdout } = useStdout();
   const termWidth = stdout.columns ?? 80;
   const termRows = stdout.rows ?? 24;
-  const contentWidth = Math.min(termWidth - 4, 100);
+  const contentWidth = Math.min(termWidth - 2, 120);
+  const isWide = termWidth >= 100;
 
   const pr = focusedPr ? prs.get(focusedPr) : undefined;
   const state: PrState = focusedPr ? (prStates.get(focusedPr) ?? 'dormant') : 'dormant';
@@ -313,45 +438,24 @@ export function PrDetail(): JSX.Element | null {
     return null;
   }, [activeAgents, focusedPr]);
 
-  // Build virtual content lines
+  // Build virtual content lines (each is a card or card pair)
   const contentLines = useMemo((): ContentLine[] => {
     if (!pr) return [];
-
-    const lines: ContentLine[] = [];
-
-    // Reviews
-    lines.push(sectionHeader('Reviews', contentWidth));
-    lines.push(...buildReviewLines(pr.reviews));
-
-    // CI Checks
-    lines.push(sectionHeader('CI Checks', contentWidth));
-    lines.push(...buildCheckLines(pr.checks));
-
-    // Comments
-    const commentLabel =
-      pr.comments.length > 8
-        ? `Comments (${Math.min(8, pr.comments.length)} of ${pr.comments.length})`
-        : `Comments (${pr.comments.length})`;
-    lines.push(sectionHeader(commentLabel, contentWidth));
-    lines.push(...buildCommentLines(pr.comments));
-
-    // Labels
-    if (pr.labels.length > 0) {
-      lines.push(sectionHeader('Labels', contentWidth));
-      lines.push(...buildLabelLines(pr.labels));
-    }
-
-    return lines;
-  }, [pr, contentWidth]);
+    return buildSectionCards(
+      pr.reviews,
+      pr.checks,
+      pr.comments,
+      pr.labels,
+      contentWidth,
+      isWide
+    );
+  }, [pr, contentWidth, isWide]);
 
   if (!focusedPr || !pr) return null;
 
   // Windowed rendering
   const availableHeight = Math.max(1, termRows - CHROME_LINES);
   const visibleLines = contentLines.slice(scrollOffset, scrollOffset + availableHeight);
-
-  // Export line count for keybind max (read by app.tsx via store)
-  // We store this as a side-effect-free computed value
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -364,21 +468,23 @@ export function PrDetail(): JSX.Element | null {
         marginX={1}
       >
         {/* Row 1: State + Number + Title */}
-        <Text wrap="truncate-end">
-          {stateIndicators[state]}
-          <Text color={stateColor} bold>
-            {' '}
-            {stateLabels[state]}
+        <Box>
+          <Text wrap="truncate-end">
+            {stateIndicators[state]}
+            <Text color={stateColor} bold>
+              {' '}
+              {stateLabels[state]}
+            </Text>
+            <Text color={semantic.dim}> {icons.middleDot} </Text>
+            <Text color={semantic.number} bold>
+              #{pr.number}
+            </Text>
+            <Text color={palette.fg} bold>
+              {' '}
+              {pr.title}
+            </Text>
           </Text>
-          <Text color={semantic.dim}> {icons.middleDot} </Text>
-          <Text color={semantic.number} bold>
-            #{pr.number}
-          </Text>
-          <Text color={palette.fg} bold>
-            {' '}
-            {pr.title}
-          </Text>
-        </Text>
+        </Box>
 
         {/* Row 2: Repo + branches */}
         <Text wrap="truncate-end">
@@ -393,29 +499,31 @@ export function PrDetail(): JSX.Element | null {
           {pr.isDraft && <Text color={semantic.warning}> DRAFT</Text>}
         </Text>
 
-        {/* Row 3: Stats */}
-        <Text wrap="truncate-end">
-          {'  '}
-          <Text color={semantic.success}>+{pr.additions}</Text>
-          <Text color={semantic.error}>
-            {' '}
-            {icons.minus}
-            {pr.deletions}
-          </Text>
-          <Text color={semantic.dim}> {icons.middleDot} </Text>
-          <Text color={semantic.muted}>{pr.changedFiles} files</Text>
-          {pr.mergeable === 'CONFLICTING' && (
+        {/* Row 3: Stats + signals */}
+        <Box>
+          <Text wrap="truncate-end">
+            {'  '}
+            <Text color={semantic.success}>+{pr.additions}</Text>
             <Text color={semantic.error}>
               {' '}
-              {icons.middleDot} {icons.conflict} CONFLICTING
+              {icons.minus}
+              {pr.deletions}
             </Text>
-          )}
-          {pr.mergeable === 'MERGEABLE' && (
-            <Text color={semantic.success}> {icons.middleDot} MERGEABLE</Text>
-          )}
-          <Text color={semantic.dim}> {icons.middleDot} </Text>
-          <Text color={semantic.timestamp}>updated {timeAgo(pr.updatedAt)}</Text>
-        </Text>
+            <Text color={semantic.dim}> {icons.middleDot} </Text>
+            <Text color={semantic.muted}>{pr.changedFiles} files</Text>
+            {pr.mergeable === 'CONFLICTING' && (
+              <Text color={semantic.error}>
+                {' '}
+                {icons.middleDot} {icons.conflict} CONFLICTING
+              </Text>
+            )}
+            {pr.mergeable === 'MERGEABLE' && (
+              <Text color={semantic.success}> {icons.middleDot} MERGEABLE</Text>
+            )}
+            <Text color={semantic.dim}> {icons.middleDot} </Text>
+            <Text color={semantic.timestamp}>updated {timeAgo(pr.updatedAt)}</Text>
+          </Text>
+        </Box>
 
         {/* Row 4: Agent activity (conditional) */}
         {agentActivity && (
@@ -424,7 +532,9 @@ export function PrDetail(): JSX.Element | null {
             <Text color={palette.electricPurple}>
               {icons.bolt} agent-{agentActivity.agent}
             </Text>
-            <Text color={semantic.dim}>: {agentActivity.streamingOutput.split('\n').pop() ?? 'running'}</Text>
+            <Text color={semantic.dim}>
+              : {agentActivity.streamingOutput.split('\n').pop() ?? 'running'}
+            </Text>
           </Text>
         )}
 
@@ -436,14 +546,17 @@ export function PrDetail(): JSX.Element | null {
               {icons.folder} {pr.worktree.path}
             </Text>
             {!pr.worktree.isClean && (
-              <Text color={semantic.warning}> ({pr.worktree.uncommittedChanges} uncommitted)</Text>
+              <Text color={semantic.warning}>
+                {' '}
+                ({pr.worktree.uncommittedChanges} uncommitted)
+              </Text>
             )}
           </Text>
         )}
       </Box>
 
-      {/* Scrollable content */}
-      <Box flexDirection="column" paddingX={2} flexGrow={1}>
+      {/* Scrollable section cards */}
+      <Box flexDirection="column" paddingX={1} flexGrow={1}>
         {visibleLines.map(line => (
           <Box key={line.key}>{line.element}</Box>
         ))}
@@ -467,19 +580,17 @@ export function PrDetail(): JSX.Element | null {
 export function useDetailLineCount(): number {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const prs = useStore(vigilStore, s => s.prs);
+  const { stdout } = useStdout();
+  const termWidth = stdout.columns ?? 80;
+  const isWide = termWidth >= 100;
   const pr = focusedPr ? prs.get(focusedPr) : undefined;
 
   return useMemo(() => {
     if (!pr) return 0;
-    // Approximate: sections + reviews + checks + comments + labels
-    let count = 1; // Reviews header
-    count += Math.max(1, pr.reviews.length * 2); // review + body
-    count += 1; // CI header
-    count += Math.max(1, 1 + pr.checks.length); // summary + each check
-    count += 1; // Comments header
-    count += Math.max(1, Math.min(8, pr.comments.length) * 4); // header + up to 3 body lines
-    if (pr.comments.length > 8) count += 1; // "N more"
-    if (pr.labels.length > 0) count += 2; // header + labels
+    // Cards: reviews+ci (1 or 2) + comments (1) + labels (0 or 1)
+    let count = isWide ? 1 : 2; // reviews + ci
+    count += 1; // comments
+    if (pr.labels.length > 0) count += 1; // labels
     return count;
-  }, [pr]);
+  }, [pr, isWide]);
 }
