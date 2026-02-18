@@ -1,11 +1,12 @@
 import { Box, useApp, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useStore } from 'zustand';
 import { poll } from './core/poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
 import { Dashboard } from './tui/dashboard.js';
+import { HelpOverlay } from './tui/help-overlay.js';
 import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
@@ -34,6 +35,7 @@ export function App(): JSX.Element {
   const searchQuery = useStore(vigilStore, s => s.searchQuery);
   const setSearchQuery = useStore(vigilStore, s => s.setSearchQuery);
   const detailLineCount = useDetailLineCount();
+  const [showHelp, setShowHelp] = useState(false);
 
   /** Get PR keys sorted by state priority + updatedAt. */
   const getSortedKeys = useCallback((): string[] => {
@@ -107,7 +109,20 @@ export function App(): JSX.Element {
       return;
     }
 
+    // ─── Help Overlay ────────────────────────────────────────────────
+    if (showHelp) {
+      if (input === '?' || key.escape) {
+        setShowHelp(false);
+      }
+      return;
+    }
+
     // ─── Normal Mode ────────────────────────────────────────────────
+    if (input === '?') {
+      setShowHelp(true);
+      return;
+    }
+
     if (input === 'q') {
       exit();
       return;
@@ -286,9 +301,15 @@ export function App(): JSX.Element {
 
   return (
     <Box flexDirection="column" height={termRows}>
-      {view === 'dashboard' && <Dashboard />}
-      {view === 'detail' && <PrDetail />}
-      {view === 'action' && <ActionPanel />}
+      {showHelp ? (
+        <HelpOverlay />
+      ) : (
+        <>
+          {view === 'dashboard' && <Dashboard />}
+          {view === 'detail' && <PrDetail />}
+          {view === 'action' && <ActionPanel />}
+        </>
+      )}
     </Box>
   );
 }
