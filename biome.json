@@ -1,0 +1,87 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
+  "files": {
+    "includes": ["src/**", "*.json", "*.ts"],
+    "ignoreUnknown": true
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "performance": {
+        "noAccumulatingSpread": "error",
+        "noBarrelFile": "off",
+        "noReExportAll": "off"
+      },
+      "complexity": {
+        "noBannedTypes": "error",
+        "noUselessTypeConstraint": "error",
+        "noExcessiveCognitiveComplexity": "off"
+      },
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "warn",
+        "noUnusedPrivateClassMembers": "error",
+        "useExhaustiveDependencies": "warn",
+        "noUndeclaredDependencies": "error",
+        "noUndeclaredVariables": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "error",
+        "useConst": "error",
+        "useImportType": "error",
+        "useExportType": "error",
+        "useEnumInitializers": "error",
+        "noInferrableTypes": "error",
+        "useShorthandFunctionType": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useNamingConvention": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noConfusingVoidType": "error",
+        "noArrayIndexKey": "off",
+        "noAssignInExpressions": "error",
+        "noAsyncPromiseExecutor": "error",
+        "noDoubleEquals": "error",
+        "noEmptyBlockStatements": "warn",
+        "noMisleadingInstantiator": "error",
+        "noUnsafeDeclarationMerging": "error",
+        "useAwait": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "noShadow": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "globals": ["Bun"],
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "es5",
+      "arrowParentheses": "asNeeded"
+    }
+  }
+}
