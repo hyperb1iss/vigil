@@ -1,8 +1,11 @@
 import { Box, useApp, useInput } from 'ink';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
+import { poll } from './core/poller.js';
 import { vigilStore } from './store/index.js';
+import { ActionPanel } from './tui/action-panel.js';
 import { Dashboard } from './tui/dashboard.js';
+import { PrDetail } from './tui/pr-detail.js';
 
 export function App(): JSX.Element {
   const { exit } = useApp();
@@ -60,10 +63,15 @@ export function App(): JSX.Element {
       return;
     }
 
-    // Refresh — placeholder, will trigger poll later
-    if (input === 'r') {
-      // TODO: trigger poll
+    // Action panel
+    if (input === 'a' && view === 'detail') {
+      setView('action');
       return;
+    }
+
+    // Manual refresh
+    if (input === 'r') {
+      void poll();
     }
   });
 
@@ -104,8 +112,8 @@ export function App(): JSX.Element {
   return (
     <Box flexDirection="column" flexGrow={1}>
       {view === 'dashboard' && <Dashboard />}
-      {view === 'detail' && <Box padding={1}>{/* Detail view — coming soon */}</Box>}
-      {view === 'action' && <Box padding={1}>{/* Action view — coming soon */}</Box>}
+      {view === 'detail' && <PrDetail />}
+      {view === 'action' && <ActionPanel />}
     </Box>
   );
 }
