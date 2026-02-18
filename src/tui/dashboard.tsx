@@ -1,6 +1,7 @@
 import { Box, Text, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 import type { JSX } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
 import type { PrState, PullRequest } from '../types/index.js';
@@ -164,8 +165,8 @@ function ListView({
 export function Dashboard(): JSX.Element {
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
-  const scrollOffset = useStore(vigilStore, s => s.scrollOffsets.dashboard);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
+  const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
 
   const { stdout } = useStdout();
@@ -173,28 +174,63 @@ export function Dashboard(): JSX.Element {
   const termRows = stdout.rows ?? 24;
 
   // Sort PRs by state priority, then by updatedAt descending
-  const sorted: Array<{ pr: PullRequest; state: PrState }> = Array.from(prs.values())
-    .map(pr => ({
-      pr,
-      state: prStates.get(pr.key) ?? ('dormant' as PrState),
-    }))
-    .sort((a, b) => {
-      const pri = statePriority(a.state) - statePriority(b.state);
-      if (pri !== 0) return pri;
-      return new Date(b.pr.updatedAt).getTime() - new Date(a.pr.updatedAt).getTime();
-    });
+  const sorted = useMemo(
+    () =>
+      Array.from(prs.values())
+        .map(pr => ({
+          pr,
+          state: prStates.get(pr.key) ?? ('dormant' as PrState),
+        }))
+        .sort((a, b) => {
+          const pri = statePriority(a.state) - statePriority(b.state);
+          if (pri !== 0) return pri;
+          return new Date(b.pr.updatedAt).getTime() - new Date(a.pr.updatedAt).getTime();
+        }),
+    [prs, prStates]
+  );
 
-  // Resolve focused key — default to first item if none set
+  // Auto-set focusedPr to first item when null and PRs exist
+  useEffect(() => {
+    if (!focusedPr && sorted.length > 0 && sorted[0]) {
+      setFocusedPr(sorted[0].pr.key);
+    }
+  }, [focusedPr, sorted, setFocusedPr]);
+
   const effectiveFocus = focusedPr ?? sorted[0]?.pr.key ?? null;
 
-  // Calculate visible count for scroll indicator
+  // Layout math
   const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
-  const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : 2;
+  const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : 1;
   const chrome = viewMode === 'cards' ? CHROME_LINES_CARD : CHROME_LINES_LIST;
-  const visibleCount =
-    viewMode === 'cards'
-      ? Math.max(1, Math.floor((termRows - chrome) / itemHeight)) * numCols
-      : Math.max(1, termRows - chrome);
+  const visibleRows = Math.max(1, Math.floor((termRows - chrome) / itemHeight));
+  const visibleCount = visibleRows * numCols;
+
+  // Compute scroll offset from focused item to keep it visible
+  const focusedIdx = effectiveFocus ? sorted.findIndex(s => s.pr.key === effectiveFocus) : 0;
+  const focusedRow =
+    numCols > 1 ? Math.floor(Math.max(0, focusedIdx) / numCols) : Math.max(0, focusedIdx);
+  const totalRows = numCols > 1 ? Math.ceil(sorted.length / numCols) : sorted.length;
+
+  // Keep focused row within the visible window
+  const prevOffset = vigilStore.getState().scrollOffsets.dashboard;
+  let scrollOffset = prevOffset;
+  if (focusedRow < scrollOffset) {
+    scrollOffset = focusedRow;
+  } else if (focusedRow >= scrollOffset + visibleRows) {
+    scrollOffset = focusedRow - visibleRows + 1;
+  }
+  // Clamp
+  scrollOffset = Math.max(0, Math.min(Math.max(0, totalRows - visibleRows), scrollOffset));
+
+  // Sync back to store if changed
+  useEffect(() => {
+    const current = vigilStore.getState().scrollOffsets.dashboard;
+    if (scrollOffset !== current) {
+      vigilStore.setState(prev => ({
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: scrollOffset },
+      }));
+    }
+  }, [scrollOffset]);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -225,7 +261,7 @@ export function Dashboard(): JSX.Element {
         <Box flexGrow={1} />
         {/* Scroll indicator */}
         <ScrollIndicator
-          current={scrollOffset * (viewMode === 'cards' ? numCols : 1)}
+          current={scrollOffset * numCols}
           total={sorted.length}
           visible={visibleCount}
         />

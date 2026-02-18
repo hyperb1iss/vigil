@@ -461,7 +461,7 @@ export async function fetchMyOpenPrs(
     '--author=@me',
     '--state=open',
     `--json=${SEARCH_FIELDS}`,
-    '--limit=50',
+    '--limit=200',
   ];
 
   // If repos specified, add repo qualifiers
@@ -532,6 +532,7 @@ export async function fetchMyOpenPrs(
         `--repo=${nameWithOwner}`,
         '--author=@me',
         '--state=open',
+        '--limit=200',
         `--json=${DETAIL_FIELDS}`,
       ]);
 

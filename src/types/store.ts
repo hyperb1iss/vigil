@@ -58,7 +58,7 @@ export interface VigilStore {
   setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
-  scrollView: (view: ViewName, delta: number, max: number) => void;
+  scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
 
   // Notifications

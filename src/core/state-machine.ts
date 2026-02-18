@@ -19,8 +19,13 @@ export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrSt
   // Hot: requires immediate author action
   const hasBlockingReview = pr.reviewDecision === 'CHANGES_REQUESTED';
   const hasConflict = pr.mergeable === 'CONFLICTING';
+  const hasCiFailure =
+    pr.checks.length > 0 &&
+    pr.checks.some(
+      c => c.status === 'COMPLETED' && (c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED')
+    );
 
-  if (hasBlockingReview || hasConflict) {
+  if (hasBlockingReview || hasConflict || hasCiFailure) {
     return 'hot';
   }
 

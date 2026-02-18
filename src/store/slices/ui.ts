@@ -22,7 +22,7 @@ export interface UiSlice {
   setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
-  scrollView: (view: ViewName, delta: number, max: number) => void;
+  scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
   addNotification: (n: Notification) => void;
   markRead: (id: string) => void;
@@ -50,10 +50,11 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
 
   setMode: mode => set({ mode }),
 
-  scrollView: (view, delta, max) =>
+  scrollView: (view, delta, max, visible = 1) =>
     set(prev => {
       const current = prev.scrollOffsets[view] ?? 0;
-      const next = Math.max(0, Math.min(Math.max(0, max - 1), current + delta));
+      const maxOffset = Math.max(0, max - visible);
+      const next = Math.max(0, Math.min(maxOffset, current + delta));
       return { scrollOffsets: { ...prev.scrollOffsets, [view]: next } };
     }),
 
