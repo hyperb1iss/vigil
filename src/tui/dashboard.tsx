@@ -1,4 +1,5 @@
 import { Box, Text, useStdout } from 'ink';
+import Spinner from 'ink-spinner';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
@@ -8,16 +9,69 @@ import { KeybindBar } from './keybind-bar.js';
 import { PrCard } from './pr-card.js';
 import { PrRow, statePriority } from './pr-row.js';
 import { StatusBar } from './status-bar.js';
-import { divider, semantic } from './theme.js';
+import { icons, palette, semantic } from './theme.js';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-/** Lines reserved for status bar, divider, agent panel, keybind bar, etc. */
-const CHROME_LINES_CARD = 5;
-const CHROME_LINES_LIST = 5;
+/** Lines reserved for chrome: status bar (1) + divider (1) + scroll indicator (1) + keybind bar (1) */
+const CHROME_LINES_CARD = 4;
+const CHROME_LINES_LIST = 4;
 
-/** Approximate height of a single card (content + border) */
-const CARD_HEIGHT = 8;
+/** Approximate height of a single card (border + 4-5 content rows) */
+const CARD_HEIGHT = 7;
+
+// ─── Empty State ──────────────────────────────────────────────────────
+
+function EmptyState(): JSX.Element {
+  return (
+    <Box flexDirection="column" alignItems="center" paddingY={2}>
+      {/* Branded ASCII mark */}
+      <Text color={palette.electricPurple} bold>
+        {'  \u2588\u2588\u2588\u2588\u2588\u2588\u2557'}
+      </Text>
+      <Text color={palette.electricPurple} bold>
+        {'  \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D'}
+      </Text>
+      <Text color={palette.electricPurple} bold>
+        {'  \u2588\u2588\u2588\u2588\u2588\u2557 '}
+      </Text>
+      <Text color={palette.electricPurple} bold>
+        {'  \u255A\u2550\u2550\u2550\u2588\u2588\u2551'}
+      </Text>
+      <Text color={palette.electricPurple} bold>
+        {'  \u2588\u2588\u2588\u2588\u2588\u2588\u2551'}
+      </Text>
+      <Text color={palette.electricPurple} bold>
+        {'  \u255A\u2550\u2550\u2550\u2550\u2550\u255D'}
+      </Text>
+
+      <Text> </Text>
+
+      <Text color={palette.fg} bold>
+        V {icons.middleDot} I {icons.middleDot} G {icons.middleDot} I {icons.middleDot} L
+      </Text>
+
+      <Text> </Text>
+
+      <Text color={semantic.muted}>Watching your pull requests</Text>
+
+      <Text> </Text>
+
+      <Box gap={1}>
+        <Text color={palette.neonCyan}>
+          <Spinner type="dots" />
+        </Text>
+        <Text color={semantic.muted}>Waiting for first poll{'\u2026'}</Text>
+      </Box>
+
+      <Text> </Text>
+
+      <Text color={semantic.dim}>
+        Press <Text color={palette.neonCyan}>r</Text> to poll now
+      </Text>
+    </Box>
+  );
+}
 
 // ─── Card Grid ────────────────────────────────────────────────────────
 
@@ -47,13 +101,7 @@ function CardGrid({
   const visible = items.slice(startIdx, startIdx + visibleCards);
 
   if (visible.length === 0) {
-    return (
-      <Box paddingY={2} justifyContent="center">
-        <Text color={semantic.muted} italic>
-          No PRs to display. Waiting for poll{'\u2026'}
-        </Text>
-      </Box>
-    );
+    return <EmptyState />;
   }
 
   // Group into rows
@@ -98,13 +146,7 @@ function ListView({
   const visible = items.slice(scrollOffset, scrollOffset + visibleRows);
 
   if (visible.length === 0) {
-    return (
-      <Box paddingY={2} justifyContent="center">
-        <Text color={semantic.muted} italic>
-          No PRs to display. Waiting for poll{'\u2026'}
-        </Text>
-      </Box>
-    );
+    return <EmptyState />;
   }
 
   return (
@@ -132,13 +174,31 @@ function ScrollIndicator({
   const canUp = current > 0;
   const canDown = current + visible < total;
 
+  // Build a mini scrollbar track
+  const trackWidth = 12;
+  const thumbSize = Math.max(1, Math.round((visible / total) * trackWidth));
+  const thumbPos = Math.round((current / total) * (trackWidth - thumbSize));
+
+  const track: string[] = [];
+  for (let i = 0; i < trackWidth; i++) {
+    if (i >= thumbPos && i < thumbPos + thumbSize) {
+      track.push('\u2588'); // █ thumb
+    } else {
+      track.push('\u2591'); // ░ track
+    }
+  }
+
   return (
     <Box justifyContent="center" gap={2}>
-      {canUp && <Text color={semantic.dim}>{'\u25B2'} more above</Text>}
-      <Text color={semantic.muted}>
-        {Math.min(current + 1, total)}-{Math.min(current + visible, total)} of {total}
+      {canUp && <Text color={semantic.dim}>{'\u25B2'}</Text>}
+      <Text>
+        <Text color={palette.electricPurple}>{track.join('')}</Text>
       </Text>
-      {canDown && <Text color={semantic.dim}>more below {'\u25BC'}</Text>}
+      <Text color={semantic.muted}>
+        {`${Math.min(current + 1, total)}\u2013${Math.min(current + visible, total)}`}{' '}
+        <Text color={semantic.dim}>of</Text> {total}
+      </Text>
+      {canDown && <Text color={semantic.dim}>{'\u25BC'}</Text>}
     </Box>
   );
 }
@@ -185,35 +245,35 @@ export function Dashboard(): JSX.Element {
       {/* Status bar */}
       <StatusBar />
       <Box paddingX={1}>
-        <Text color={semantic.dim}>{divider(Math.min(termWidth - 2, 120))}</Text>
+        <Text color={semantic.dim}>{'\u2500'.repeat(Math.min(termWidth - 2, 120))}</Text>
       </Box>
 
-      {/* Main content */}
-      {viewMode === 'cards' ? (
-        <CardGrid
-          items={sorted}
-          focusedPr={effectiveFocus}
-          termWidth={termWidth}
-          termRows={termRows}
-          scrollOffset={scrollOffset}
+      {/* Main content — fills available vertical space */}
+      <Box flexDirection="column" flexGrow={1}>
+        {viewMode === 'cards' ? (
+          <CardGrid
+            items={sorted}
+            focusedPr={effectiveFocus}
+            termWidth={termWidth}
+            termRows={termRows}
+            scrollOffset={scrollOffset}
+          />
+        ) : (
+          <ListView
+            items={sorted}
+            focusedPr={effectiveFocus}
+            termRows={termRows}
+            scrollOffset={scrollOffset}
+          />
+        )}
+        <Box flexGrow={1} />
+        {/* Scroll indicator */}
+        <ScrollIndicator
+          current={scrollOffset * (viewMode === 'cards' ? numCols : 1)}
+          total={sorted.length}
+          visible={visibleCount}
         />
-      ) : (
-        <ListView
-          items={sorted}
-          focusedPr={effectiveFocus}
-          termRows={termRows}
-          scrollOffset={scrollOffset}
-        />
-      )}
-
-      {/* Scroll indicator */}
-      <ScrollIndicator
-        current={scrollOffset * (viewMode === 'cards' ? numCols : 1)}
-        total={sorted.length}
-        visible={visibleCount}
-      />
-
-      <Box flexGrow={1} />
+      </Box>
 
       {/* Agent activity */}
       <AgentStatus />

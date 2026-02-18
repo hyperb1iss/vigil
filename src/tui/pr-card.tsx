@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import type {
   CheckConclusion,
   PrCheck,
+  PrLabel,
   PrReview,
   PrState,
   PullRequest,
@@ -19,130 +20,124 @@ import {
   truncate,
 } from './theme.js';
 
-// ─── CI Progress Bar ─────────────────────────────────────────────────
+// ─── CI Bar (fixed-width proportional) ──────────────────────────────
+
+const CI_WIDTH = 10;
 
 function CiBar({ checks }: { checks: PrCheck[] }): JSX.Element {
   if (checks.length === 0) {
     return (
-      <Text color={semantic.dim}>
-        <Text color={semantic.muted}>CI </Text>
-        {'\u2500'}
+      <Text>
+        <Text color={semantic.dim}>CI </Text>
+        <Text color={semantic.dim}>{'─'.repeat(CI_WIDTH)}</Text>
       </Text>
     );
   }
 
-  // Sort: passed first, then failed, then running
-  const sorted = [...checks].sort((a, b) => {
-    const order = (c: PrCheck): number => {
-      if (c.status !== 'COMPLETED') return 2;
-      const conclusion: CheckConclusion = c.conclusion;
-      if (conclusion === 'SUCCESS' || conclusion === 'NEUTRAL' || conclusion === 'SKIPPED')
-        return 0;
-      return 1;
-    };
-    return order(a) - order(b);
-  });
-
+  const total = checks.length;
   const passed = checks.filter(
     c =>
       c.status === 'COMPLETED' &&
       (c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED')
   ).length;
-  const failed = checks.filter(
-    c =>
-      c.status === 'COMPLETED' &&
-      c.conclusion !== 'SUCCESS' &&
-      c.conclusion !== 'NEUTRAL' &&
-      c.conclusion !== 'SKIPPED'
-  ).length;
+  const failed = checks.filter(c => {
+    if (c.status !== 'COMPLETED') return false;
+    const conclusion: CheckConclusion = c.conclusion;
+    return (
+      conclusion !== 'SUCCESS' &&
+      conclusion !== 'NEUTRAL' &&
+      conclusion !== 'SKIPPED' &&
+      conclusion !== null
+    );
+  }).length;
 
-  // Build colored block string segments
-  const blocks = sorted.map(check => {
-    if (check.status !== 'COMPLETED') return 'pending';
-    if (
-      check.conclusion === 'SUCCESS' ||
-      check.conclusion === 'NEUTRAL' ||
-      check.conclusion === 'SKIPPED'
-    )
-      return 'pass';
-    return 'fail';
-  });
+  const passN = Math.round((passed / total) * CI_WIDTH);
+  const failN = Math.round((failed / total) * CI_WIDTH);
+  const runN = Math.min(CI_WIDTH - passN - failN, total - passed - failed > 0 ? CI_WIDTH : 0);
+  const emptyN = CI_WIDTH - passN - failN - runN;
 
   const countColor =
-    failed > 0 ? semantic.error : passed === checks.length ? semantic.success : semantic.warning;
+    failed > 0 ? semantic.error : passed === total ? semantic.success : semantic.warning;
 
   return (
     <Text>
-      <Text color={semantic.muted}>CI </Text>
-      {blocks.map((type, i) => (
-        <Text
-          key={`ci-${i}`}
-          color={
-            type === 'pass' ? semantic.success : type === 'fail' ? semantic.error : semantic.warning
-          }
-        >
-          {'\u2588'}
-        </Text>
-      ))}
+      <Text color={semantic.dim}>CI </Text>
+      {passN > 0 && <Text color={semantic.success}>{'█'.repeat(passN)}</Text>}
+      {failN > 0 && <Text color={semantic.error}>{'█'.repeat(failN)}</Text>}
+      {runN > 0 && <Text color={semantic.warning}>{'█'.repeat(runN)}</Text>}
+      {emptyN > 0 && <Text color={semantic.dim}>{'░'.repeat(emptyN)}</Text>}
       <Text color={countColor}>
         {' '}
-        {passed}/{checks.length}
+        {passed}/{total}
       </Text>
     </Text>
   );
 }
 
-// ─── Review Summary ──────────────────────────────────────────────────
+// ─── Review Summary (compact) ───────────────────────────────────────
 
-function ReviewSummary({
+function ReviewBadge({
   reviews,
   decision,
 }: {
   reviews: PrReview[];
   decision: ReviewDecision;
-}): JSX.Element {
-  const approved = reviews.filter(r => r.state === 'APPROVED');
-  const changes = reviews.filter(r => r.state === 'CHANGES_REQUESTED');
-  const pending = reviews.filter(r => r.state === 'PENDING' || r.state === 'COMMENTED');
+}): JSX.Element | null {
+  const approved = reviews.filter(r => r.state === 'APPROVED').length;
+  const changes = reviews.filter(r => r.state === 'CHANGES_REQUESTED').length;
 
-  if (reviews.length === 0 && decision === '') {
-    return (
-      <Text color={semantic.dim}>
-        <Text color={semantic.muted}>Reviews </Text>
-        {'\u2500'}
-      </Text>
-    );
-  }
+  if (reviews.length === 0 && decision === '') return null;
 
   return (
     <Text>
-      <Text color={semantic.muted}>Reviews </Text>
-      {approved.length > 0 && (
+      {approved > 0 && (
         <Text color={semantic.success}>
+          {' '}
           {icons.check}
-          {approved.length}{' '}
+          {approved}
         </Text>
       )}
-      {changes.length > 0 && (
+      {changes > 0 && (
         <Text color={semantic.error}>
+          {' '}
           {icons.cross}
-          {changes.length}{' '}
+          {changes}
         </Text>
       )}
-      {pending.length > 0 && (
-        <Text color={semantic.warning}>
-          {'\u25CF'}
-          {pending.length}{' '}
-        </Text>
-      )}
-      {decision === 'REVIEW_REQUIRED' && approved.length === 0 && changes.length === 0 && (
-        <Text color={semantic.warning}>required</Text>
+      {approved === 0 && changes === 0 && decision === 'REVIEW_REQUIRED' && (
+        <Text color={palette.electricPurple}>{' ● review'}</Text>
       )}
     </Text>
   );
 }
 
-// ─── PR Card ─────────────────────────────────────────────────────────
+// ─── Label Badges ───────────────────────────────────────────────────
+
+function LabelBadges({ labels }: { labels: PrLabel[] }): JSX.Element | null {
+  if (labels.length === 0) return null;
+
+  return (
+    <Box paddingTop={0}>
+      <Text wrap="truncate-end">
+        {labels.map((label, i) => (
+          <Text key={label.id}>
+            {i > 0 && <Text> </Text>}
+            <Text color={`#${label.color}`}>{label.name}</Text>
+          </Text>
+        ))}
+      </Text>
+    </Box>
+  );
+}
+
+// ─── Short repo name ────────────────────────────────────────────────
+
+function shortRepo(nameWithOwner: string): string {
+  const parts = nameWithOwner.split('/');
+  return parts[1] ?? nameWithOwner;
+}
+
+// ─── PR Card ────────────────────────────────────────────────────────
 
 interface PrCardProps {
   pr: PullRequest;
@@ -153,78 +148,107 @@ interface PrCardProps {
 
 export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Element {
   const stateColor = prStateColors[state];
+  const ago = timeAgo(pr.updatedAt);
+  const hasBranches = pr.headRefName.length > 0;
+  const hasDiff = pr.additions > 0 || pr.deletions > 0;
+
+  // Signal flags
+  const hasCiFail = pr.checks.some(c => c.conclusion === 'FAILURE');
+  const hasChangesRequested = pr.reviewDecision === 'CHANGES_REQUESTED';
 
   return (
     <Box
       flexDirection="column"
       borderStyle={isFocused ? 'double' : 'round'}
-      borderColor={isFocused ? palette.electricPurple : stateColor}
+      borderColor={isFocused ? palette.electricPurple : palette.dimmed}
       paddingX={1}
       width={width}
     >
-      {/* Row 1: State badge + PR number + title (single Text to prevent wrapping) */}
-      <Text wrap="truncate-end">
-        {stateIndicators[state]}
-        <Text color={stateColor} bold>
-          {' '}
-          {stateLabels[state]}
-        </Text>
-        <Text color={semantic.dim}> {icons.middleDot} </Text>
-        <Text color={semantic.number} bold>
-          #{pr.number}
-        </Text>
-        <Text color={palette.fg} bold={isFocused}>
-          {' '}
-          {pr.title}
-        </Text>
-      </Text>
-
-      {/* Row 2: Repo + branch flow */}
-      <Text wrap="truncate-end">
-        <Text color={semantic.muted}> {pr.repository.nameWithOwner}</Text>
-        <Text color={semantic.dim}> {icons.middleDot} </Text>
-        <Text color={semantic.branch}>
-          {icons.branch} {truncate(pr.headRefName, 22)}
-        </Text>
-        <Text color={semantic.dim}> {icons.arrow} </Text>
-        <Text color={semantic.branch}>{pr.baseRefName}</Text>
-      </Text>
-
-      {/* Row 3: CI + Reviews */}
-      <Text wrap="truncate-end">
-        {'  '}
-        <CiBar checks={pr.checks} />
-        {'   '}
-        <ReviewSummary reviews={pr.reviews} decision={pr.reviewDecision} />
-      </Text>
-
-      {/* Row 4: Diff stats + meta */}
-      <Text wrap="truncate-end">
-        {'  '}
-        <Text color={semantic.success}>
-          {icons.plus}
-          {pr.additions}
-        </Text>
-        <Text color={semantic.error}>
-          {' '}
-          {icons.minus}
-          {pr.deletions}
-        </Text>
-        <Text color={semantic.dim}> {icons.middleDot} </Text>
-        <Text color={semantic.muted}>{pr.changedFiles} files</Text>
-        {pr.mergeable === 'MERGEABLE' && (
-          <Text color={semantic.success}> {icons.middleDot} Mergeable</Text>
-        )}
-        {pr.mergeable === 'CONFLICTING' && (
-          <Text color={semantic.error}>
+      {/* Row 1: State + Number (left) ── Flags + Age (right) */}
+      <Box>
+        <Text>
+          <Text>{stateIndicators[state]}</Text>
+          <Text color={stateColor} bold>
             {' '}
-            {icons.middleDot} {icons.conflict} Conflict
+            {stateLabels[state]}
+          </Text>
+          <Text color={semantic.dim}>{' · '}</Text>
+          <Text color={palette.neonCyan} bold>
+            {'#'}
+            {pr.number}
+          </Text>
+        </Text>
+        <Box flexGrow={1} />
+        <Text>
+          {hasCiFail && (
+            <Text color={semantic.error} bold>
+              {'CI FAIL '}
+            </Text>
+          )}
+          {hasChangesRequested && (
+            <Text color={palette.coral} bold>
+              {'CHANGES '}
+            </Text>
+          )}
+          {pr.isDraft && <Text color={palette.electricPurple}>{'DRAFT '}</Text>}
+          {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>{'CONFLICT '}</Text>}
+          {pr.mergeable === 'MERGEABLE' && !hasCiFail && !hasChangesRequested && (
+            <Text color={semantic.success}>{'✓ '}</Text>
+          )}
+          <Text color={semantic.muted}>{ago}</Text>
+        </Text>
+      </Box>
+
+      {/* Row 2: Title (hero — full width) */}
+      <Text wrap="truncate-end" color={palette.fg} bold={isFocused}>
+        {pr.title}
+      </Text>
+
+      {/* Row 3: Repo · branch → base */}
+      <Text wrap="truncate-end">
+        <Text color={palette.dimmed}>{shortRepo(pr.repository.nameWithOwner)}</Text>
+        {hasBranches && (
+          <Text>
+            <Text color={palette.dimmed}>{' · '}</Text>
+            <Text color={palette.neonCyan} dimColor>
+              {icons.branch} {truncate(pr.headRefName, 24)}
+            </Text>
+            <Text color={palette.dimmed}>{' → '}</Text>
+            <Text color={palette.neonCyan} dimColor>
+              {pr.baseRefName}
+            </Text>
           </Text>
         )}
-        {pr.isDraft && <Text color={semantic.warning}> {icons.middleDot} Draft</Text>}
-        <Text color={semantic.dim}> {icons.middleDot} </Text>
-        <Text color={semantic.timestamp}>{timeAgo(pr.updatedAt)}</Text>
       </Text>
+
+      {/* Row 4: Metrics bar — CI + reviews + diff (spread across width) */}
+      <Box>
+        <CiBar checks={pr.checks} />
+        <ReviewBadge reviews={pr.reviews} decision={pr.reviewDecision} />
+        {hasDiff && (
+          <Box flexGrow={1} justifyContent="flex-end">
+            <Text>
+              <Text color={semantic.success}>
+                {'+'}
+                {pr.additions}
+              </Text>
+              <Text color={semantic.error}>
+                {' −'}
+                {pr.deletions}
+              </Text>
+              {pr.changedFiles > 0 && (
+                <Text color={palette.dimmed}>
+                  {' · '}
+                  {pr.changedFiles}f
+                </Text>
+              )}
+            </Text>
+          </Box>
+        )}
+      </Box>
+
+      {/* Row 5: Labels (optional) */}
+      <LabelBadges labels={pr.labels} />
     </Box>
   );
 }

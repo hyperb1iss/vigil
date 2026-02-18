@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
@@ -11,7 +11,7 @@ interface Keybind {
 
 const DASHBOARD_BINDS: Keybind[] = [
   { key: 'j/k', label: 'navigate' },
-  { key: '\u21B5', label: 'detail' },
+  { key: '↵', label: 'detail' },
   { key: 'v', label: 'view' },
   { key: 'y', label: 'mode' },
   { key: 'r', label: 'refresh' },
@@ -32,26 +32,58 @@ const ACTION_BINDS: Keybind[] = [
   { key: 'Esc', label: 'back' },
 ];
 
-function KeybindGroup({ binds }: { binds: Keybind[] }): JSX.Element {
+// Purple → Cyan gradient across the SilkCircuit spectrum
+const VIGIL_GRADIENT: Array<{ letter: string; color: string }> = [
+  { letter: 'V', color: '#e135ff' },
+  { letter: 'I', color: '#c666ff' },
+  { letter: 'G', color: '#aa99ff' },
+  { letter: 'I', color: '#80ccff' },
+  { letter: 'L', color: '#80ffea' },
+];
+
+function VigilBrand(): JSX.Element {
   return (
-    <Box gap={2} paddingX={1}>
-      {binds.map(bind => (
-        <Box key={bind.key} gap={1}>
-          <Text color={palette.neonCyan} bold>
-            {bind.key}
+    <Text>
+      {VIGIL_GRADIENT.map((g, i) => (
+        <Text key={i}>
+          {i > 0 && <Text color={semantic.dim}>{' \u00B7 '}</Text>}
+          <Text color={g.color} bold>
+            {g.letter}
           </Text>
-          <Text color={semantic.muted}>{bind.label}</Text>
-        </Box>
+        </Text>
       ))}
-    </Box>
+    </Text>
   );
 }
 
 export function KeybindBar(): JSX.Element {
   const view = useStore(vigilStore, s => s.view);
+  const { stdout } = useStdout();
+  const termWidth = stdout.columns ?? 80;
 
   const binds =
     view === 'action' ? ACTION_BINDS : view === 'detail' ? DETAIL_BINDS : DASHBOARD_BINDS;
 
-  return <KeybindGroup binds={binds} />;
+  return (
+    <Box flexDirection="column">
+      <Box paddingX={1}>
+        <Text color={semantic.dim}>{'\u2500'.repeat(Math.min(termWidth - 2, 120))}</Text>
+      </Box>
+      <Box paddingX={1}>
+        <Text wrap="truncate-end">
+          {binds.map((bind, i) => (
+            <Text key={bind.key}>
+              {i > 0 && <Text color={semantic.dim}>{' \u00B7 '}</Text>}
+              <Text color={palette.neonCyan} bold>
+                {bind.key}
+              </Text>
+              <Text color={semantic.muted}> {bind.label}</Text>
+            </Text>
+          ))}
+        </Text>
+        <Box flexGrow={1} />
+        <VigilBrand />
+      </Box>
+    </Box>
+  );
 }

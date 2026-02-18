@@ -26,41 +26,46 @@ export function StatusBar(): JSX.Element {
   const totalPrs = prs.size;
 
   return (
-    <Box paddingX={1} gap={1}>
-      {/* App name */}
-      <Text color={palette.electricPurple} bold>
-        {icons.bolt} VIGIL
-      </Text>
-
-      <Text color={semantic.dim}>{icons.middleDot}</Text>
-
-      {/* Mode indicator */}
-      <Text color={mode === 'yolo' ? palette.coral : palette.neonCyan} bold>
-        {mode === 'yolo' ? 'YOLO' : 'HITL'}
-      </Text>
-
-      <Text color={semantic.dim}>{icons.middleDot}</Text>
-
-      {/* View mode */}
-      <Text color={semantic.muted}>{viewMode === 'cards' ? '▦' : '☰'}</Text>
-
-      <Text color={semantic.dim}>{icons.middleDot}</Text>
-
-      {/* PR state summary */}
-      {ALL_STATES.map(state =>
-        counts[state] > 0 ? (
-          <Text key={state} color={prStateColors[state]}>
-            {stateIndicators[state]}
-            {counts[state]}
-          </Text>
-        ) : null
-      )}
-
-      {totalPrs === 0 && (
-        <Text color={semantic.muted} italic>
-          No PRs
+    <Box paddingX={1}>
+      <Text wrap="truncate-end">
+        {/* Logo */}
+        <Text color={palette.electricPurple} bold>
+          {icons.bolt} VIGIL
         </Text>
-      )}
+
+        <Text color={semantic.dim}>{' │ '}</Text>
+
+        {/* Mode */}
+        <Text color={mode === 'yolo' ? palette.coral : palette.neonCyan} bold>
+          {mode === 'yolo' ? 'YOLO' : 'HITL'}
+        </Text>
+
+        <Text color={semantic.dim}>{' │ '}</Text>
+
+        {/* View mode */}
+        <Text color={semantic.muted}>{viewMode === 'cards' ? '▦ Cards' : '☰ List'}</Text>
+
+        <Text color={semantic.dim}>{' │ '}</Text>
+
+        {/* PR state counts */}
+        {totalPrs > 0 ? (
+          ALL_STATES.map(state =>
+            counts[state] > 0 ? (
+              <Text key={state}>
+                <Text color={prStateColors[state]}>
+                  {stateIndicators[state]}
+                  {counts[state]}
+                </Text>
+                {'  '}
+              </Text>
+            ) : null
+          )
+        ) : (
+          <Text color={semantic.muted} italic>
+            No PRs
+          </Text>
+        )}
+      </Text>
 
       <Box flexGrow={1} />
 
@@ -77,7 +82,7 @@ export function StatusBar(): JSX.Element {
           {icons.refresh} {timeAgo(lastPollAt)}
         </Text>
       ) : (
-        <Text color={semantic.muted}>{icons.refresh} waiting</Text>
+        <Text color={semantic.muted}>{icons.refresh} idle</Text>
       )}
     </Box>
   );

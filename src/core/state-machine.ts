@@ -5,28 +5,32 @@ import type { PrState, PullRequest } from '../types/pr.js';
  *
  * Priority order (first match wins):
  *  1. blocked  — draft, closed, or merged
- *  2. hot      — failing CI, blocking review, or merge conflict
+ *  2. hot      — changes requested or merge conflict (needs author action)
  *  3. ready    — all checks green, approved, mergeable
  *  4. dormant  — no activity beyond threshold
- *  5. waiting  — everything else (CI running, reviews pending, etc.)
+ *  5. waiting  — CI running/failing, reviews pending, etc.
  */
 export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrState {
+  // Blocked: not actionable
   if (pr.state !== 'OPEN' || pr.isDraft) {
     return 'blocked';
   }
 
-  const hasCiFailure = pr.checks.some(c => c.conclusion === 'FAILURE');
+  // Hot: requires immediate author action
   const hasBlockingReview = pr.reviewDecision === 'CHANGES_REQUESTED';
   const hasConflict = pr.mergeable === 'CONFLICTING';
 
-  if (hasCiFailure || hasBlockingReview || hasConflict) {
+  if (hasBlockingReview || hasConflict) {
     return 'hot';
   }
 
+  // Ready: ship it
   const allChecksPassing =
     pr.checks.length > 0 &&
     pr.checks.every(
-      c => c.conclusion === 'SUCCESS' || c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL'
+      c =>
+        c.status === 'COMPLETED' &&
+        (c.conclusion === 'SUCCESS' || c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL')
     );
   const isApproved = pr.reviewDecision === 'APPROVED';
   const isMergeable = pr.mergeable === 'MERGEABLE';
@@ -35,11 +39,13 @@ export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrSt
     return 'ready';
   }
 
+  // Dormant: stale
   const hoursSinceUpdate = (Date.now() - new Date(pr.updatedAt).getTime()) / (1000 * 60 * 60);
 
   if (hoursSinceUpdate > dormantThresholdHours) {
     return 'dormant';
   }
 
+  // Waiting: CI running, reviews pending, failures being addressed
   return 'waiting';
 }

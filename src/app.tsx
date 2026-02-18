@@ -13,7 +13,7 @@ import { useMouse } from './tui/use-mouse.js';
 /** Lines reserved for status bar + divider at top */
 const HEADER_LINES = 2;
 /** Card height including border */
-const CARD_HEIGHT = 8;
+const CARD_HEIGHT = 7;
 /** List row height (unfocused) */
 const LIST_ROW_HEIGHT = 1;
 
@@ -150,7 +150,7 @@ export function App(): JSX.Element {
         if (sorted.length === 0) return;
 
         const termWidth = stdout.columns ?? 120;
-        const numCols = viewMode === 'cards' ? (termWidth >= 100 ? 2 : 1) : 1;
+        const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
         const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : LIST_ROW_HEIGHT;
 
         const contentY = event.y - HEADER_LINES;
@@ -193,8 +193,10 @@ export function App(): JSX.Element {
 
   // ─── Render ───────────────────────────────────────────────────────
 
+  const termRows = stdout.rows ?? 24;
+
   return (
-    <Box flexDirection="column" flexGrow={1}>
+    <Box flexDirection="column" height={termRows}>
       {view === 'dashboard' && <Dashboard />}
       {view === 'detail' && <PrDetail />}
       {view === 'action' && <ActionPanel />}

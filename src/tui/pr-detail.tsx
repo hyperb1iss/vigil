@@ -1,4 +1,4 @@
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
@@ -6,7 +6,6 @@ import type { PrState, PullRequest } from '../types/index.js';
 import { KeybindBar } from './keybind-bar.js';
 import {
   checkIndicators,
-  divider,
   icons,
   palette,
   prStateColors,
@@ -146,12 +145,15 @@ function CommentSection({ pr }: { pr: PullRequest }): JSX.Element {
 
 // ─── Section Header ───────────────────────────────────────────────────
 
-function SectionHeader({ title }: { title: string }): JSX.Element {
+function SectionHeader({ title, width }: { title: string; width: number }): JSX.Element {
+  const lineLen = Math.max(0, width - title.length - 4);
   return (
     <Box paddingTop={1}>
       <Text color={palette.electricPurple} bold>
-        {title}
+        {'\u2500\u2500 '}
+        {title}{' '}
       </Text>
+      <Text color={semantic.dim}>{'\u2500'.repeat(lineLen)}</Text>
     </Box>
   );
 }
@@ -162,6 +164,9 @@ export function PrDetail(): JSX.Element | null {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const { stdout } = useStdout();
+  const termWidth = stdout.columns ?? 80;
+  const contentWidth = Math.min(termWidth - 4, 100);
 
   if (!focusedPr) return null;
   const pr = prs.get(focusedPr);
@@ -180,71 +185,81 @@ export function PrDetail(): JSX.Element | null {
         marginX={1}
       >
         {/* Header */}
-        <Box gap={1}>
-          <Text>{stateIndicators[state]}</Text>
+        <Text wrap="truncate-end">
+          {stateIndicators[state]}
           <Text color={stateColor} bold>
+            {' '}
             {stateLabels[state]}
           </Text>
-          <Text color={semantic.dim}>{icons.middleDot}</Text>
+          <Text color={semantic.dim}> {icons.middleDot} </Text>
           <Text color={semantic.number} bold>
             #{pr.number}
           </Text>
           <Text color={palette.fg} bold>
+            {' '}
             {pr.title}
           </Text>
-        </Box>
+        </Text>
 
-        <Box gap={1} paddingLeft={2}>
+        <Text wrap="truncate-end">
+          {'  '}
           <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
+          <Text color={semantic.dim}> {icons.middleDot} </Text>
           <Text color={semantic.branch}>
             {icons.branch} {pr.headRefName}
           </Text>
-          <Text color={semantic.dim}>{icons.arrow}</Text>
+          <Text color={semantic.dim}> {icons.arrow} </Text>
           <Text color={semantic.branch}>{pr.baseRefName}</Text>
-          {pr.isDraft && <Text color={semantic.warning}>DRAFT</Text>}
-        </Box>
+          {pr.isDraft && <Text color={semantic.warning}> DRAFT</Text>}
+        </Text>
 
         {/* Stats */}
-        <Box gap={2} paddingLeft={2} paddingTop={1}>
+        <Text wrap="truncate-end">
+          {'  '}
           <Text color={semantic.success}>+{pr.additions}</Text>
           <Text color={semantic.error}>
+            {' '}
             {icons.minus}
             {pr.deletions}
           </Text>
-          <Text color={semantic.muted}>({pr.changedFiles} files)</Text>
-          {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>CONFLICTING</Text>}
-          {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>MERGEABLE</Text>}
-        </Box>
+          <Text color={semantic.dim}> {icons.middleDot} </Text>
+          <Text color={semantic.muted}>{pr.changedFiles} files</Text>
+          {pr.mergeable === 'CONFLICTING' && (
+            <Text color={semantic.error}>
+              {' '}
+              {icons.middleDot} {icons.conflict} CONFLICTING
+            </Text>
+          )}
+          {pr.mergeable === 'MERGEABLE' && (
+            <Text color={semantic.success}> {icons.middleDot} MERGEABLE</Text>
+          )}
+          <Text color={semantic.dim}> {icons.middleDot} </Text>
+          <Text color={semantic.timestamp}>updated {timeAgo(pr.updatedAt)}</Text>
+        </Text>
 
         {/* Worktree */}
         {pr.worktree && (
-          <Box paddingLeft={2} paddingTop={1}>
+          <Text wrap="truncate-end">
+            {'  '}
             <Text color={semantic.path}>
               {icons.folder} {pr.worktree.path}
-              {!pr.worktree.isClean && (
-                <Text color={semantic.warning}>
-                  {' '}
-                  ({pr.worktree.uncommittedChanges} uncommitted)
-                </Text>
-              )}
             </Text>
-          </Box>
+            {!pr.worktree.isClean && (
+              <Text color={semantic.warning}> ({pr.worktree.uncommittedChanges} uncommitted)</Text>
+            )}
+          </Text>
         )}
       </Box>
 
       {/* Sections */}
       <Box flexDirection="column" paddingX={2}>
-        <Box paddingTop={1}>
-          <Text color={semantic.dim}>{divider(56)}</Text>
-        </Box>
-
-        <SectionHeader title="Reviews" />
+        <SectionHeader title="Reviews" width={contentWidth} />
         <ReviewSection pr={pr} />
 
-        <SectionHeader title="CI Checks" />
+        <SectionHeader title="CI Checks" width={contentWidth} />
         <CheckSection pr={pr} />
 
-        <SectionHeader title="Recent Comments" />
+        <SectionHeader title="Recent Comments" width={contentWidth} />
         <CommentSection pr={pr} />
       </Box>
 

@@ -36,12 +36,21 @@ function AgentRow({ run }: { run: AgentRun }): JSX.Element {
   );
 }
 
-export function AgentStatus(): JSX.Element | null {
+export function AgentStatus(): JSX.Element {
   const activeAgents = useStore(vigilStore, s => s.activeAgents);
+  const mode = useStore(vigilStore, s => s.mode);
 
   const running = Array.from(activeAgents.values()).filter(a => a.status === 'running');
 
-  if (running.length === 0) return null;
+  if (running.length === 0) {
+    return (
+      <Box paddingX={1}>
+        <Text color={semantic.dim}>
+          {icons.bolt} agents {mode === 'yolo' ? 'auto' : 'standby'}
+        </Text>
+      </Box>
+    );
+  }
 
   return (
     <Box

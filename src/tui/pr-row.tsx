@@ -3,7 +3,6 @@ import type { JSX } from 'react';
 import type { CheckConclusion, PrState, PullRequest, ReviewDecision } from '../types/index.js';
 import {
   checkIndicators,
-  icons,
   palette,
   prStateColors,
   semantic,
@@ -137,6 +136,7 @@ export function PrRow({ pr, state, isFocused }: PrRowProps): JSX.Element {
   const review = reviewIndicator(pr.reviewDecision);
   const stateColor = prStateColors[state];
   const ago = timeAgo(pr.updatedAt);
+  const hasBranch = pr.headRefName.length > 0;
 
   return (
     <Box
@@ -154,49 +154,75 @@ export function PrRow({ pr, state, isFocused }: PrRowProps): JSX.Element {
         : {})}
     >
       {/* Main row */}
-      <Box gap={1}>
+      <Box>
         <Text>{stateIndicators[state]}</Text>
-        <Text color={semantic.number} bold>
-          #{pr.number}
+        <Text color={palette.neonCyan} bold>
+          {' #'}
+          {pr.number}
         </Text>
-        <Text color={isFocused ? palette.fg : stateColor} bold={isFocused}>
-          {truncate(pr.title, 44)}
-        </Text>
-        <Box flexGrow={1} />
-        <Text color={semantic.branch} dimColor={!isFocused}>
-          {truncate(pr.headRefName, 18)}
-        </Text>
-        <Text color={semantic.dim}>{icons.arrow}</Text>
-        <Text color={semantic.branch} dimColor={!isFocused}>
-          {pr.baseRefName}
-        </Text>
+        <Text color={semantic.dim}> </Text>
+        <Box flexGrow={1}>
+          <Text wrap="truncate-end" color={isFocused ? palette.fg : stateColor} bold={isFocused}>
+            {pr.title}
+          </Text>
+        </Box>
+        {hasBranch && (
+          <Text>
+            <Text color={palette.dimmed}> </Text>
+            <Text color={palette.neonCyan} dimColor>
+              {truncate(pr.headRefName, 20)}
+            </Text>
+            <Text color={palette.dimmed}>{' → '}</Text>
+            <Text color={palette.neonCyan} dimColor>
+              {pr.baseRefName}
+            </Text>
+          </Text>
+        )}
+        <Text color={palette.dimmed}> </Text>
         <MiniCiBar checks={pr.checks} />
-        <Text color={ci.color}>{ci.label ? ` ${ci.label}` : ''}</Text>
-        <Text color={review.color}>{review.symbol}</Text>
-        <Text color={semantic.timestamp} dimColor>
+        {ci.label !== '' && <Text color={ci.color}> {ci.label}</Text>}
+        <Text color={review.color}> {review.symbol}</Text>
+        <Text color={semantic.muted} dimColor>
+          {' '}
           {ago}
         </Text>
       </Box>
 
       {/* Expanded detail when focused */}
       {isFocused && (
-        <Box paddingLeft={3} gap={1}>
-          <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
-          <Text color={semantic.dim}>{icons.middleDot}</Text>
-          <Text color={semantic.success}>+{pr.additions}</Text>
-          <Text color={semantic.error}>
-            {icons.minus}
-            {pr.deletions}
+        <Box paddingLeft={3}>
+          <Text>
+            <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
+            {(pr.additions > 0 || pr.deletions > 0) && (
+              <Text>
+                <Text color={semantic.dim}>{' · '}</Text>
+                <Text color={semantic.success}>+{pr.additions}</Text>
+                <Text color={semantic.error}>
+                  {' −'}
+                  {pr.deletions}
+                </Text>
+                {pr.changedFiles > 0 && (
+                  <Text color={palette.dimmed}>
+                    {' · '}
+                    {pr.changedFiles}f
+                  </Text>
+                )}
+              </Text>
+            )}
+            {pr.checks.some(c => c.conclusion === 'FAILURE') && (
+              <Text color={semantic.error} bold>
+                {' · CI FAIL'}
+              </Text>
+            )}
+            {pr.reviewDecision === 'CHANGES_REQUESTED' && (
+              <Text color={palette.coral} bold>
+                {' · CHANGES'}
+              </Text>
+            )}
+            {pr.isDraft && <Text color={palette.electricPurple}>{' · DRAFT'}</Text>}
+            {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>{' · CONFLICT'}</Text>}
+            {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>{' · MERGEABLE'}</Text>}
           </Text>
-          <Text color={semantic.muted}>({pr.changedFiles} files)</Text>
-          {pr.isDraft && <Text color={semantic.warning}>DRAFT</Text>}
-          {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>CONFLICT</Text>}
-          {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>MERGEABLE</Text>}
-          {pr.worktree && (
-            <Text color={semantic.path}>
-              {icons.folder} {truncate(pr.worktree.path, 30)}
-            </Text>
-          )}
         </Box>
       )}
     </Box>
