@@ -7,7 +7,9 @@
   "bin": {
     "vigil": "dist/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run --watch src/cli.ts",
     "build": "bun run build.ts",
@@ -33,7 +35,16 @@
   },
   "author": "Stefanie Jane <stef@hyperbliss.tech>",
   "license": "Apache-2.0",
-  "keywords": ["cli", "terminal", "tui", "github", "pr", "code-review", "ai", "agent"],
+  "keywords": [
+    "cli",
+    "terminal",
+    "tui",
+    "github",
+    "pr",
+    "code-review",
+    "ai",
+    "agent"
+  ],
   "engines": {
     "bun": ">=1.1.0"
   },

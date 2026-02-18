@@ -193,7 +193,7 @@ Drill into a specific PR to see the full context and agent-proposed actions.
 │                                                                           │
 ├─ Reviews ─────────────────────────────────────────────────────────────────┤
 │                                                                           │
-│  🤖 claude-bedrock-gradial[bot]  ·  4m ago                               │
+│  🤖 claude-code-review[bot]  ·  4m ago                                   │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
 │  │ 🚫 Blocking: Missing SET search_path on SECURITY DEFINER          │  │
 │  │    → Agent assessment: Real issue. Auto-fixable.                   │  │
@@ -300,8 +300,8 @@ import type { RepoConfig } from "vigil";
 
 export default {
   // GitHub
-  owner: "gradial",
-  repo: "v2",
+  owner: "acme",
+  repo: "webapp",
   baseBranch: "main",
 
   // PR conventions
@@ -309,13 +309,13 @@ export default {
 
   // Bot awareness — teach Vigil about your CI/review bots
   bots: {
-    "claude-bedrock-gradial[bot]": {
+    "claude-code-review[bot]": {
       role: "code-reviewer",
       trustLevel: "advisory",     // "advisory" | "authoritative"
       parseBlocking: true,        // parse 🚫 Blocking sections
       parseSuggestions: true,
     },
-    "gradial-truthsayer[bot]": {
+    "acme-truthsayer[bot]": {
       role: "pr-template",
       templates: {
         verification: "## Verification Evidence",
@@ -655,7 +655,7 @@ Autonomous operation for confident actions. Notification system for when it need
 
 ## Worktree Awareness
 
-Vigil is built for developers who use git worktrees — multiple branches checked out simultaneously in different directories. This is the default workflow for teams like Gradial where feature branches live in `~/dev/worktrees/v2/stef/*`.
+Vigil is built for developers who use git worktrees — multiple branches checked out simultaneously in different directories. This is the default workflow for teams where feature branches live in dedicated worktree directories.
 
 ### How Vigil Discovers Worktrees
 
@@ -705,7 +705,7 @@ Vigil can monitor multiple repos simultaneously. Each repo has its own worktree 
 ```
 ╭─ vigil ──────────────────────────────────────────────────────────────────╮
 │                                                                          │
-│  gradial/v2                                          3 hot · 2 waiting  │
+│  acme/webapp                                         3 hot · 2 waiting  │
 │  ──────────────────────────────────────────────────────────────────────  │
 │  🔴 #3058  fix(supabase): eval scheduler ...                            │
 │  🔴 #3044  chore: pattern JSON view ...                                 │

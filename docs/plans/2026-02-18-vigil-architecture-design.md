@@ -95,8 +95,8 @@ vigil/
 
 ```
 vigil                                        # All my PRs, all repos
-vigil --repo gradial/v2                      # Focus on one repo
-vigil --repo gradial/v2 --repo hyperb1iss/sibyl  # Multiple repos
+vigil --repo owner/repo                      # Focus on one repo
+vigil --repo owner/repo --repo hyperb1iss/sibyl  # Multiple repos
 vigil --mode yolo                            # Start in YOLO mode
 vigil --no-agents                            # Dashboard only, no agent actions
 ```
