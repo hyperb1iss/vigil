@@ -8,6 +8,7 @@ import { AgentStatus } from './agent-status.js';
 import { KeybindBar } from './keybind-bar.js';
 import { PrCard } from './pr-card.js';
 import { PrRow, statePriority } from './pr-row.js';
+import { ScrollIndicator } from './scroll-indicator.js';
 import { StatusBar } from './status-bar.js';
 import { icons, palette, semantic } from './theme.js';
 
@@ -158,57 +159,12 @@ function ListView({
   );
 }
 
-// ─── Scroll Indicator ────────────────────────────────────────────────
-
-function ScrollIndicator({
-  current,
-  total,
-  visible,
-}: {
-  current: number;
-  total: number;
-  visible: number;
-}): JSX.Element | null {
-  if (total <= visible) return null;
-
-  const canUp = current > 0;
-  const canDown = current + visible < total;
-
-  // Build a mini scrollbar track
-  const trackWidth = 12;
-  const thumbSize = Math.max(1, Math.round((visible / total) * trackWidth));
-  const thumbPos = Math.round((current / total) * (trackWidth - thumbSize));
-
-  const track: string[] = [];
-  for (let i = 0; i < trackWidth; i++) {
-    if (i >= thumbPos && i < thumbPos + thumbSize) {
-      track.push('\u2588'); // █ thumb
-    } else {
-      track.push('\u2591'); // ░ track
-    }
-  }
-
-  return (
-    <Box justifyContent="center" gap={2}>
-      {canUp && <Text color={semantic.dim}>{'\u25B2'}</Text>}
-      <Text>
-        <Text color={palette.electricPurple}>{track.join('')}</Text>
-      </Text>
-      <Text color={semantic.muted}>
-        {`${Math.min(current + 1, total)}\u2013${Math.min(current + visible, total)}`}{' '}
-        <Text color={semantic.dim}>of</Text> {total}
-      </Text>
-      {canDown && <Text color={semantic.dim}>{'\u25BC'}</Text>}
-    </Box>
-  );
-}
-
 // ─── Dashboard ────────────────────────────────────────────────────────
 
 export function Dashboard(): JSX.Element {
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
-  const scrollOffset = useStore(vigilStore, s => s.scrollOffset);
+  const scrollOffset = useStore(vigilStore, s => s.scrollOffsets.dashboard);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
 

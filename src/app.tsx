@@ -6,7 +6,7 @@ import { poll } from './core/poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
 import { Dashboard } from './tui/dashboard.js';
-import { PrDetail } from './tui/pr-detail.js';
+import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
 
@@ -26,12 +26,12 @@ export function App(): JSX.Element {
   const mode = useStore(vigilStore, s => s.mode);
   const viewMode = useStore(vigilStore, s => s.viewMode);
   const setViewMode = useStore(vigilStore, s => s.setViewMode);
-  const scrollUp = useStore(vigilStore, s => s.scrollUp);
-  const scrollDown = useStore(vigilStore, s => s.scrollDown);
+  const scrollView = useStore(vigilStore, s => s.scrollView);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const detailLineCount = useDetailLineCount();
 
   /** Get PR keys sorted by state priority + updatedAt. */
   const getSortedKeys = useCallback((): string[] => {
@@ -79,15 +79,25 @@ export function App(): JSX.Element {
     }
 
     if (input === 'k' || key.upArrow) {
-      scrollUp();
-      moveFocus(-1);
+      if (view === 'dashboard') {
+        scrollView('dashboard', -1, getSortedKeys().length);
+        moveFocus(-1);
+      } else if (view === 'detail') {
+        scrollView('detail', -1, detailLineCount);
+      }
+      // Action panel handles its own j/k
       return;
     }
 
     if (input === 'j' || key.downArrow) {
-      const sorted = getSortedKeys();
-      scrollDown(sorted.length);
-      moveFocus(1);
+      if (view === 'dashboard') {
+        const sorted = getSortedKeys();
+        scrollView('dashboard', 1, sorted.length);
+        moveFocus(1);
+      } else if (view === 'detail') {
+        scrollView('detail', 1, detailLineCount);
+      }
+      // Action panel handles its own j/k
       return;
     }
 
@@ -133,13 +143,13 @@ export function App(): JSX.Element {
 
       // Scroll wheel
       if (event.button === 64) {
-        scrollUp();
+        scrollView('dashboard', -1, getSortedKeys().length);
         moveFocus(-1);
         return;
       }
       if (event.button === 65) {
         const sorted = getSortedKeys();
-        scrollDown(sorted.length);
+        scrollView('dashboard', 1, sorted.length);
         moveFocus(1);
         return;
       }
@@ -159,7 +169,7 @@ export function App(): JSX.Element {
         const row = Math.floor((contentY - 1) / itemHeight);
         const col = viewMode === 'cards' ? Math.floor(((event.x - 1) / termWidth) * numCols) : 0;
 
-        const scrollOffset = vigilStore.getState().scrollOffset;
+        const scrollOffset = vigilStore.getState().scrollOffsets.dashboard;
         const idx = (scrollOffset + row) * numCols + col;
 
         if (idx >= 0 && idx < sorted.length) {
@@ -178,8 +188,7 @@ export function App(): JSX.Element {
     [
       view,
       viewMode,
-      scrollUp,
-      scrollDown,
+      scrollView,
       moveFocus,
       getSortedKeys,
       setFocusedPr,

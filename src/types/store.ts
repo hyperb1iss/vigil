@@ -32,7 +32,7 @@ export interface VigilStore {
   viewMode: ViewMode;
   focusedPr: string | null;
   selectedAction: number;
-  scrollOffset: number;
+  scrollOffsets: Record<ViewName, number>;
 
   // Notifications
   notifications: Notification[];
@@ -58,8 +58,8 @@ export interface VigilStore {
   setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
-  scrollUp: () => void;
-  scrollDown: (maxItems: number) => void;
+  scrollView: (view: ViewName, delta: number, max: number) => void;
+  resetScroll: (view: ViewName) => void;
 
   // Notifications
   addNotification: (n: Notification) => void;

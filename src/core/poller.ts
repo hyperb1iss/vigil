@@ -29,7 +29,7 @@ export async function poll(repos?: string[]): Promise<PrEvent[]> {
   store.getState().setPolling(true);
 
   try {
-    const prs = await fetchMyOpenPrs(repos);
+    const prs = await fetchMyOpenPrs(repos, state.prs);
 
     // Build current snapshot
     const currentMap = new Map<string, PullRequest>();

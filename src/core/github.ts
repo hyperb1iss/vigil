@@ -450,7 +450,10 @@ function normalizeState(raw: string): 'OPEN' | 'CLOSED' | 'MERGED' {
  *
  * The detail pass replaces the search-pass stubs so we get complete data.
  */
-export async function fetchMyOpenPrs(repos?: string[]): Promise<PullRequest[]> {
+export async function fetchMyOpenPrs(
+  repos?: string[],
+  knownPrs?: Map<string, PullRequest>
+): Promise<PullRequest[]> {
   // Pass 1: Discover open PRs via search
   const searchArgs = [
     'search',
@@ -487,8 +490,41 @@ export async function fetchMyOpenPrs(repos?: string[]): Promise<PullRequest[]> {
     prMap.set(pr.key, pr);
   }
 
-  // Pass 2: Fetch full detail per-repo
-  const detailPromises = [...repoSet].map(async nameWithOwner => {
+  // Short-circuit: only fetch detail for repos with changed PRs
+  const staleRepos = new Set<string>();
+  if (knownPrs && knownPrs.size > 0) {
+    for (const repo of repoSet) {
+      // Check if any PR in this repo has a different updatedAt
+      let hasChange = false;
+      for (const raw of searchResults) {
+        if (raw.repository.nameWithOwner !== repo) continue;
+        const key = `${repo}#${raw.number}`;
+        const known = knownPrs.get(key);
+        if (!known || known.updatedAt !== raw.updatedAt) {
+          hasChange = true;
+          break;
+        }
+      }
+      if (hasChange) {
+        staleRepos.add(repo);
+      } else {
+        // Carry forward existing data for unchanged repos
+        for (const [key, pr] of knownPrs) {
+          if (key.startsWith(`${repo}#`)) {
+            prMap.set(key, pr);
+          }
+        }
+      }
+    }
+  } else {
+    // No known PRs — fetch everything
+    for (const repo of repoSet) {
+      staleRepos.add(repo);
+    }
+  }
+
+  // Pass 2: Fetch full detail only for stale repos
+  const detailPromises = [...staleRepos].map(async nameWithOwner => {
     try {
       const detailJson = await runGh([
         'pr',
