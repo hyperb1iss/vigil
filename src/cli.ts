@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
+import { seedMockData } from './core/mock-data.js';
 import { startPoller } from './core/poller.js';
 import { initKnowledgeFile } from './learning/knowledge.js';
 import {
@@ -87,6 +88,11 @@ async function main(): Promise<void> {
       default: false,
       describe: 'Dashboard only, no agent processing',
     })
+    .option('demo', {
+      type: 'boolean',
+      default: false,
+      describe: 'Seed with mock data for visual testing',
+    })
     .help()
     .version()
     .parse();
@@ -109,6 +115,11 @@ async function main(): Promise<void> {
   // Initialize store with config
   const store = vigilStore.getState();
   store.setMode(config.defaultMode);
+
+  // Demo mode — seed mock data
+  if (argv.demo) {
+    seedMockData(vigilStore);
+  }
 
   // Wire up events
   const onEvents = async (events: PrEvent[]): Promise<void> => {

@@ -3,6 +3,7 @@ import type { VigilConfig } from './config.js';
 import type { PrState, PullRequest } from './pr.js';
 
 export type ViewName = 'dashboard' | 'detail' | 'action';
+export type ViewMode = 'cards' | 'list';
 
 export interface Notification {
   id: string;
@@ -28,6 +29,7 @@ export interface VigilStore {
   // UI state
   mode: 'hitl' | 'yolo';
   view: ViewName;
+  viewMode: ViewMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffset: number;
@@ -53,10 +55,11 @@ export interface VigilStore {
 
   // UI actions
   setView: (view: ViewName) => void;
+  setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   scrollUp: () => void;
-  scrollDown: () => void;
+  scrollDown: (maxItems: number) => void;
 
   // Notifications
   addNotification: (n: Notification) => void;

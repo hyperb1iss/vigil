@@ -3,28 +3,18 @@ import type { JSX } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
 import type { PrState, PullRequest } from '../types/index.js';
+import { KeybindBar } from './keybind-bar.js';
 import {
   checkIndicators,
+  divider,
   icons,
   palette,
   prStateColors,
   semantic,
   stateIndicators,
   stateLabels,
+  timeAgo,
 } from './theme.js';
-
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 // ─── Review Section ───────────────────────────────────────────────────
 
@@ -47,7 +37,7 @@ function ReviewSection({ pr }: { pr: PullRequest }): JSX.Element {
               ? semantic.error
               : semantic.warning;
         return (
-          <Box key={review.id} gap={1}>
+          <Box key={review.id} gap={1} paddingLeft={1}>
             <Text color={stateColor} bold>
               {review.state === 'APPROVED'
                 ? checkIndicators.passing.symbol
@@ -91,7 +81,7 @@ function CheckSection({ pr }: { pr: PullRequest }): JSX.Element {
               : checkIndicators.failing;
 
         return (
-          <Box key={check.name} gap={1}>
+          <Box key={check.name} gap={1} paddingLeft={1}>
             <Text color={indicator.color}>{indicator.symbol}</Text>
             <Text color={palette.fg}>{check.name}</Text>
             {check.status === 'COMPLETED' && (
@@ -129,7 +119,7 @@ function CommentSection({ pr }: { pr: PullRequest }): JSX.Element {
         const truncated =
           comment.body.length > 80 ? `${comment.body.slice(0, 79)}\u2026` : comment.body;
         return (
-          <Box key={comment.id} flexDirection="column">
+          <Box key={comment.id} flexDirection="column" paddingLeft={1}>
             <Box gap={1}>
               <Text color={palette.neonCyan} bold>
                 {comment.author.login}
@@ -147,9 +137,21 @@ function CommentSection({ pr }: { pr: PullRequest }): JSX.Element {
       })}
       {pr.comments.length > 5 && (
         <Text color={semantic.muted} dimColor>
-          ... and {pr.comments.length - 5} more
+          {icons.ellipsis} and {pr.comments.length - 5} more
         </Text>
       )}
+    </Box>
+  );
+}
+
+// ─── Section Header ───────────────────────────────────────────────────
+
+function SectionHeader({ title }: { title: string }): JSX.Element {
+  return (
+    <Box paddingTop={1}>
+      <Text color={palette.electricPurple} bold>
+        {title}
+      </Text>
     </Box>
   );
 }
@@ -169,92 +171,85 @@ export function PrDetail(): JSX.Element | null {
   const stateColor = prStateColors[state];
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
-      {/* Header */}
-      <Box gap={1}>
-        <Text>{stateIndicators[state]}</Text>
-        <Text color={semantic.number} bold>
-          #{pr.number}
-        </Text>
-        <Text color={palette.fg} bold>
-          {pr.title}
-        </Text>
-      </Box>
-
-      <Box gap={1} paddingLeft={3}>
-        <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
-        <Text color={semantic.branch}>
-          {icons.branch} {pr.headRefName}
-        </Text>
-        <Text color={semantic.muted}>{icons.arrow}</Text>
-        <Text color={semantic.branch}>{pr.baseRefName}</Text>
-        <Text color={stateColor}>{stateLabels[state]}</Text>
-        {pr.isDraft && <Text color={semantic.warning}>DRAFT</Text>}
-      </Box>
-
-      {/* Stats */}
-      <Box gap={2} paddingLeft={3} paddingTop={1}>
-        <Text color={semantic.success}>+{pr.additions}</Text>
-        <Text color={semantic.error}>-{pr.deletions}</Text>
-        <Text color={semantic.muted}>({pr.changedFiles} files)</Text>
-        {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>CONFLICTING</Text>}
-        {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>MERGEABLE</Text>}
-      </Box>
-
-      {/* Worktree */}
-      {pr.worktree && (
-        <Box paddingLeft={3} paddingTop={1}>
-          <Text color={semantic.path}>
-            {icons.folder} {pr.worktree.path}
-            {!pr.worktree.isClean && (
-              <Text color={semantic.warning}> ({pr.worktree.uncommittedChanges} uncommitted)</Text>
-            )}
+    <Box flexDirection="column" flexGrow={1}>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={stateColor}
+        paddingX={1}
+        marginX={1}
+      >
+        {/* Header */}
+        <Box gap={1}>
+          <Text>{stateIndicators[state]}</Text>
+          <Text color={stateColor} bold>
+            {stateLabels[state]}
+          </Text>
+          <Text color={semantic.dim}>{icons.middleDot}</Text>
+          <Text color={semantic.number} bold>
+            #{pr.number}
+          </Text>
+          <Text color={palette.fg} bold>
+            {pr.title}
           </Text>
         </Box>
-      )}
 
-      {/* Divider */}
-      <Box paddingTop={1}>
-        <Text color={semantic.muted}>{'\u2500'.repeat(60)}</Text>
+        <Box gap={1} paddingLeft={2}>
+          <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
+          <Text color={semantic.branch}>
+            {icons.branch} {pr.headRefName}
+          </Text>
+          <Text color={semantic.dim}>{icons.arrow}</Text>
+          <Text color={semantic.branch}>{pr.baseRefName}</Text>
+          {pr.isDraft && <Text color={semantic.warning}>DRAFT</Text>}
+        </Box>
+
+        {/* Stats */}
+        <Box gap={2} paddingLeft={2} paddingTop={1}>
+          <Text color={semantic.success}>+{pr.additions}</Text>
+          <Text color={semantic.error}>
+            {icons.minus}
+            {pr.deletions}
+          </Text>
+          <Text color={semantic.muted}>({pr.changedFiles} files)</Text>
+          {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>CONFLICTING</Text>}
+          {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>MERGEABLE</Text>}
+        </Box>
+
+        {/* Worktree */}
+        {pr.worktree && (
+          <Box paddingLeft={2} paddingTop={1}>
+            <Text color={semantic.path}>
+              {icons.folder} {pr.worktree.path}
+              {!pr.worktree.isClean && (
+                <Text color={semantic.warning}>
+                  {' '}
+                  ({pr.worktree.uncommittedChanges} uncommitted)
+                </Text>
+              )}
+            </Text>
+          </Box>
+        )}
       </Box>
 
-      {/* Reviews */}
-      <Box flexDirection="column" paddingTop={1}>
-        <Text color={palette.electricPurple} bold>
-          Reviews
-        </Text>
+      {/* Sections */}
+      <Box flexDirection="column" paddingX={2}>
+        <Box paddingTop={1}>
+          <Text color={semantic.dim}>{divider(56)}</Text>
+        </Box>
+
+        <SectionHeader title="Reviews" />
         <ReviewSection pr={pr} />
-      </Box>
 
-      {/* CI Checks */}
-      <Box flexDirection="column" paddingTop={1}>
-        <Text color={palette.electricPurple} bold>
-          CI Checks
-        </Text>
+        <SectionHeader title="CI Checks" />
         <CheckSection pr={pr} />
-      </Box>
 
-      {/* Comments */}
-      <Box flexDirection="column" paddingTop={1}>
-        <Text color={palette.electricPurple} bold>
-          Recent Comments
-        </Text>
+        <SectionHeader title="Recent Comments" />
         <CommentSection pr={pr} />
       </Box>
 
-      {/* Footer hint */}
-      <Box paddingTop={1}>
-        <Text color={semantic.muted}>
-          <Text color={palette.neonCyan} bold>
-            Esc
-          </Text>{' '}
-          back{' '}
-          <Text color={palette.neonCyan} bold>
-            a
-          </Text>{' '}
-          actions
-        </Text>
-      </Box>
+      <Box flexGrow={1} />
+      <KeybindBar />
     </Box>
   );
 }

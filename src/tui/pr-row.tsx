@@ -8,6 +8,8 @@ import {
   prStateColors,
   semantic,
   stateIndicators,
+  timeAgo,
+  truncate,
 } from './theme.js';
 
 interface PrRowProps {
@@ -20,30 +22,11 @@ interface PrRowProps {
 
 const STATE_PRIORITY: PrState[] = ['hot', 'waiting', 'ready', 'blocked', 'dormant'];
 
-/** Priority index for sorting — lower = hotter. */
 export function statePriority(state: PrState): number {
   const idx = STATE_PRIORITY.indexOf(state);
   return idx === -1 ? STATE_PRIORITY.length : idx;
 }
 
-/** Truncate a string to maxLen, appending ellipsis if needed. */
-function truncate(str: string, maxLen: number): string {
-  return str.length > maxLen ? `${str.slice(0, maxLen - 1)}\u2026` : str;
-}
-
-/** Human-readable relative time from an ISO timestamp. */
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}
-
-/** Summarize CI checks into a compact indicator + counts. */
 function ciSummary(checks: PullRequest['checks']): {
   symbol: string;
   color: string;
@@ -95,7 +78,6 @@ function ciSummary(checks: PullRequest['checks']): {
   };
 }
 
-/** Map review decision to a compact indicator. */
 function reviewIndicator(decision: ReviewDecision): { symbol: string; color: string } {
   switch (decision) {
     case 'APPROVED':
@@ -109,6 +91,45 @@ function reviewIndicator(decision: ReviewDecision): { symbol: string; color: str
   }
 }
 
+// ─── Compact CI Bar ──────────────────────────────────────────────────
+
+function MiniCiBar({ checks }: { checks: PullRequest['checks'] }): JSX.Element {
+  if (checks.length === 0) {
+    return <Text color={semantic.dim}>{'\u2500'}</Text>;
+  }
+
+  const passed = checks.filter(
+    c =>
+      c.status === 'COMPLETED' &&
+      (c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED')
+  ).length;
+  const failed = checks.filter(
+    c =>
+      c.status === 'COMPLETED' &&
+      c.conclusion !== 'SUCCESS' &&
+      c.conclusion !== 'NEUTRAL' &&
+      c.conclusion !== 'SKIPPED' &&
+      c.conclusion !== null
+  ).length;
+
+  // Render as tiny block bar (max 10 blocks)
+  const total = checks.length;
+  const barLen = Math.min(total, 10);
+  const scale = total > 10 ? barLen / total : 1;
+
+  const passBlocks = Math.round(passed * scale);
+  const failBlocks = Math.round(failed * scale);
+  const pendBlocks = barLen - passBlocks - failBlocks;
+
+  return (
+    <Box>
+      {passBlocks > 0 && <Text color={semantic.success}>{'\u2588'.repeat(passBlocks)}</Text>}
+      {failBlocks > 0 && <Text color={semantic.error}>{'\u2588'.repeat(failBlocks)}</Text>}
+      {pendBlocks > 0 && <Text color={semantic.warning}>{'\u2588'.repeat(pendBlocks)}</Text>}
+    </Box>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────
 
 export function PrRow({ pr, state, isFocused }: PrRowProps): JSX.Element {
@@ -120,10 +141,16 @@ export function PrRow({ pr, state, isFocused }: PrRowProps): JSX.Element {
   return (
     <Box
       flexDirection="column"
-      paddingLeft={1}
-      paddingRight={1}
+      paddingX={1}
       {...(isFocused
-        ? { borderStyle: 'single' as const, borderColor: palette.electricPurple }
+        ? {
+            borderStyle: 'single' as const,
+            borderColor: palette.electricPurple,
+            borderLeft: true,
+            borderRight: true,
+            borderTop: false,
+            borderBottom: false,
+          }
         : {})}
     >
       {/* Main row */}
@@ -133,40 +160,41 @@ export function PrRow({ pr, state, isFocused }: PrRowProps): JSX.Element {
           #{pr.number}
         </Text>
         <Text color={isFocused ? palette.fg : stateColor} bold={isFocused}>
-          {truncate(pr.title, 50)}
+          {truncate(pr.title, 44)}
         </Text>
         <Box flexGrow={1} />
         <Text color={semantic.branch} dimColor={!isFocused}>
-          {icons.branch} {truncate(pr.headRefName, 24)}
+          {truncate(pr.headRefName, 18)}
         </Text>
-        <Text color={ci.color}>
-          {ci.symbol}
-          {ci.label ? ` ${ci.label}` : ''}
+        <Text color={semantic.dim}>{icons.arrow}</Text>
+        <Text color={semantic.branch} dimColor={!isFocused}>
+          {pr.baseRefName}
         </Text>
+        <MiniCiBar checks={pr.checks} />
+        <Text color={ci.color}>{ci.label ? ` ${ci.label}` : ''}</Text>
         <Text color={review.color}>{review.symbol}</Text>
         <Text color={semantic.timestamp} dimColor>
           {ago}
         </Text>
       </Box>
 
-      {/* Focused detail line */}
+      {/* Expanded detail when focused */}
       {isFocused && (
         <Box paddingLeft={3} gap={1}>
           <Text color={semantic.muted}>{pr.repository.nameWithOwner}</Text>
-          <Text color={semantic.muted}>
-            {icons.dot} +{pr.additions} -{pr.deletions} ({pr.changedFiles} files)
+          <Text color={semantic.dim}>{icons.middleDot}</Text>
+          <Text color={semantic.success}>+{pr.additions}</Text>
+          <Text color={semantic.error}>
+            {icons.minus}
+            {pr.deletions}
           </Text>
+          <Text color={semantic.muted}>({pr.changedFiles} files)</Text>
           {pr.isDraft && <Text color={semantic.warning}>DRAFT</Text>}
           {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>CONFLICT</Text>}
+          {pr.mergeable === 'MERGEABLE' && <Text color={semantic.success}>MERGEABLE</Text>}
           {pr.worktree && (
             <Text color={semantic.path}>
-              {icons.folder} {pr.worktree.path}
-              {!pr.worktree.isClean && (
-                <Text color={semantic.warning}>
-                  {' '}
-                  ({pr.worktree.uncommittedChanges} uncommitted)
-                </Text>
-              )}
+              {icons.folder} {truncate(pr.worktree.path, 30)}
             </Text>
           )}
         </Box>

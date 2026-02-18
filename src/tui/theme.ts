@@ -18,6 +18,7 @@ export const palette = {
   errorRed: '#ff6363',
   fg: '#f8f8f2',
   muted: '#8b85a0',
+  dimmed: '#5a5475',
   bgHighlight: '#1a162a',
 } as const;
 
@@ -44,11 +45,11 @@ export const stateIndicators: Record<PrState, string> = {
 // ─── PR State → Label ──────────────────────────────────────────────
 
 export const stateLabels: Record<PrState, string> = {
-  hot: 'Hot',
-  waiting: 'Waiting',
-  ready: 'Ready',
-  dormant: 'Dormant',
-  blocked: 'Blocked',
+  hot: 'HOT',
+  waiting: 'WAITING',
+  ready: 'READY',
+  dormant: 'DORMANT',
+  blocked: 'BLOCKED',
 };
 
 // ─── Semantic Color Map ─────────────────────────────────────────────
@@ -68,7 +69,7 @@ export const semantic = {
   warning: palette.electricYellow,
   info: palette.neonCyan,
   muted: palette.muted,
-  dim: palette.muted,
+  dim: palette.dimmed,
   fg: palette.fg,
   text: palette.fg,
 } as const;
@@ -82,12 +83,63 @@ export const checkIndicators = {
   skipped: { symbol: '\u2500', color: palette.muted }, // ─
 } as const;
 
+// ─── Progress Bar Characters ────────────────────────────────────────
+
+export const progressChars = {
+  filled: '\u2588', // █
+  medium: '\u2593', // ▓
+  light: '\u2591', // ░
+  empty: '\u2500', // ─
+  blockFilled: '\u25B0', // ▰
+  blockEmpty: '\u25B1', // ▱
+} as const;
+
 // ─── UI Icons ───────────────────────────────────────────────────────
 
 export const icons = {
-  branch: '\u{E0A0}', //  (Powerline branch)
-  pr: '\u{2387}', // ⎇  (alternative)
-  folder: '\u{1F4C1}', // 📁
+  branch: '\uE0A0', //  (Powerline branch)
+  pr: '\u2387', // ⎇
+  folder: '\uF07B', //
   arrow: '\u2192', // →
+  arrowLeft: '\u2190', // ←
   dot: '\u2022', // •
+  middleDot: '\u00B7', // ·
+  ellipsis: '\u2026', // …
+  bolt: '\u26A1', // ⚡
+  eye: '\uF06E', //
+  refresh: '\u21BB', // ↻
+  check: '\u2714', // ✔
+  cross: '\u2718', // ✘
+  merge: '\uE727', //
+  draft: '\uF040', //
+  conflict: '\u26A0', // ⚠
+  comment: '\uF075', //
+  plus: '+',
+  minus: '\u2212', // −
 } as const;
+
+// ─── Divider ────────────────────────────────────────────────────────
+
+export function divider(width: number): string {
+  return '\u2500'.repeat(width);
+}
+
+// ─── Truncation ─────────────────────────────────────────────────────
+
+export function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  return `${str.slice(0, maxLen - 1)}\u2026`;
+}
+
+// ─── Time Formatting ────────────────────────────────────────────────
+
+export function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}

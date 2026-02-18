@@ -1,21 +1,23 @@
 import type { StateCreator } from 'zustand';
 import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
-import type { Notification, ViewName, VigilStore } from '../../types/store.js';
+import type { Notification, ViewMode, ViewName, VigilStore } from '../../types/store.js';
 
 export interface UiSlice {
   mode: 'hitl' | 'yolo';
   view: ViewName;
+  viewMode: ViewMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffset: number;
   notifications: Notification[];
   config: VigilConfig;
   setView: (view: ViewName) => void;
+  setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   scrollUp: () => void;
-  scrollDown: () => void;
+  scrollDown: (maxItems: number) => void;
   addNotification: (n: Notification) => void;
   markRead: (id: string) => void;
 }
@@ -23,6 +25,7 @@ export interface UiSlice {
 export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => ({
   mode: 'hitl',
   view: 'dashboard',
+  viewMode: 'cards',
   focusedPr: null,
   selectedAction: 0,
   scrollOffset: 0,
@@ -30,6 +33,8 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   config: defaultConfig,
 
   setView: view => set({ view, scrollOffset: 0 }),
+
+  setViewMode: viewMode => set({ viewMode, scrollOffset: 0 }),
 
   setFocusedPr: key => set({ focusedPr: key }),
 
@@ -40,14 +45,14 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
       scrollOffset: Math.max(0, prev.scrollOffset - 1),
     })),
 
-  scrollDown: () =>
+  scrollDown: (maxItems: number) =>
     set(prev => ({
-      scrollOffset: prev.scrollOffset + 1,
+      scrollOffset: Math.min(Math.max(0, maxItems - 1), prev.scrollOffset + 1),
     })),
 
   addNotification: n =>
     set(prev => ({
-      notifications: [n, ...prev.notifications],
+      notifications: [n, ...prev.notifications].slice(0, 100),
     })),
 
   markRead: id =>

@@ -4,76 +4,141 @@ import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
 import type { PrState, PullRequest } from '../types/index.js';
 import { AgentStatus } from './agent-status.js';
+import { KeybindBar } from './keybind-bar.js';
+import { PrCard } from './pr-card.js';
 import { PrRow, statePriority } from './pr-row.js';
-import { palette, prStateColors, semantic, stateIndicators, stateLabels } from './theme.js';
+import { StatusBar } from './status-bar.js';
+import { divider, semantic } from './theme.js';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-/** Lines reserved for header, footer, agent status, etc. */
-const CHROME_LINES = 6;
+/** Lines reserved for status bar, divider, agent panel, keybind bar, etc. */
+const CHROME_LINES_CARD = 5;
+const CHROME_LINES_LIST = 5;
 
-const ALL_STATES: PrState[] = ['hot', 'waiting', 'ready', 'blocked', 'dormant'];
+/** Approximate height of a single card (content + border) */
+const CARD_HEIGHT = 8;
 
-// ─── Header ───────────────────────────────────────────────────────────
+// ─── Card Grid ────────────────────────────────────────────────────────
 
-function Header({
-  counts,
-  mode,
+function CardGrid({
+  items,
+  focusedPr,
+  termWidth,
+  termRows,
+  scrollOffset,
 }: {
-  counts: Record<PrState, number>;
-  mode: 'hitl' | 'yolo';
+  items: Array<{ pr: PullRequest; state: PrState }>;
+  focusedPr: string | null;
+  termWidth: number;
+  termRows: number;
+  scrollOffset: number;
 }): JSX.Element {
+  // Calculate columns: 2 if wide enough, else 1
+  const numCols = termWidth >= 140 ? 2 : 1;
+  const cardWidth = numCols > 1 ? Math.floor((termWidth - 2) / numCols) : termWidth;
+
+  // Calculate visible cards based on terminal height
+  const visibleRows = Math.max(1, Math.floor((termRows - CHROME_LINES_CARD) / CARD_HEIGHT));
+  const visibleCards = visibleRows * numCols;
+
+  // Windowed slice
+  const startIdx = scrollOffset * numCols;
+  const visible = items.slice(startIdx, startIdx + visibleCards);
+
+  if (visible.length === 0) {
+    return (
+      <Box paddingY={2} justifyContent="center">
+        <Text color={semantic.muted} italic>
+          No PRs to display. Waiting for poll{'\u2026'}
+        </Text>
+      </Box>
+    );
+  }
+
+  // Group into rows
+  const rows: Array<Array<{ pr: PullRequest; state: PrState }>> = [];
+  for (let i = 0; i < visible.length; i += numCols) {
+    rows.push(visible.slice(i, i + numCols));
+  }
+
   return (
     <Box flexDirection="column">
-      <Box gap={1}>
-        <Text color={palette.electricPurple} bold>
-          VIGIL
-        </Text>
-        <Text color={semantic.muted}>
-          {icons.dot} {mode === 'hitl' ? 'HITL' : 'YOLO'} mode
-        </Text>
-        <Box flexGrow={1} />
-        {ALL_STATES.map(state => (
-          <Text key={state} color={prStateColors[state]}>
-            {stateIndicators[state]} {stateLabels[state]}:{counts[state]}
-          </Text>
-        ))}
-      </Box>
-      <Text color={semantic.muted}>{'\u2500'.repeat(72)}</Text>
+      {rows.map((row, rowIdx) => (
+        <Box key={row[0]?.pr.key ?? rowIdx} gap={1}>
+          {row.map(({ pr, state }) => (
+            <PrCard
+              key={pr.key}
+              pr={pr}
+              state={state}
+              isFocused={pr.key === focusedPr}
+              width={cardWidth}
+            />
+          ))}
+        </Box>
+      ))}
     </Box>
   );
 }
 
-// Need icons for the header
-const icons = { dot: '\u2022' } as const;
+// ─── List View ────────────────────────────────────────────────────────
 
-// ─── Footer ───────────────────────────────────────────────────────────
+function ListView({
+  items,
+  focusedPr,
+  termRows,
+  scrollOffset,
+}: {
+  items: Array<{ pr: PullRequest; state: PrState }>;
+  focusedPr: string | null;
+  termRows: number;
+  scrollOffset: number;
+}): JSX.Element {
+  const visibleRows = Math.max(1, termRows - CHROME_LINES_LIST);
+  const visible = items.slice(scrollOffset, scrollOffset + visibleRows);
 
-function Footer(): JSX.Element {
+  if (visible.length === 0) {
+    return (
+      <Box paddingY={2} justifyContent="center">
+        <Text color={semantic.muted} italic>
+          No PRs to display. Waiting for poll{'\u2026'}
+        </Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box gap={2} paddingTop={1}>
+    <Box flexDirection="column">
+      {visible.map(({ pr, state }) => (
+        <PrRow key={pr.key} pr={pr} state={state} isFocused={pr.key === focusedPr} />
+      ))}
+    </Box>
+  );
+}
+
+// ─── Scroll Indicator ────────────────────────────────────────────────
+
+function ScrollIndicator({
+  current,
+  total,
+  visible,
+}: {
+  current: number;
+  total: number;
+  visible: number;
+}): JSX.Element | null {
+  if (total <= visible) return null;
+
+  const canUp = current > 0;
+  const canDown = current + visible < total;
+
+  return (
+    <Box justifyContent="center" gap={2}>
+      {canUp && <Text color={semantic.dim}>{'\u25B2'} more above</Text>}
       <Text color={semantic.muted}>
-        <Text color={palette.neonCyan} bold>
-          j/k
-        </Text>{' '}
-        navigate{' '}
-        <Text color={palette.neonCyan} bold>
-          Enter
-        </Text>{' '}
-        detail{' '}
-        <Text color={palette.neonCyan} bold>
-          y
-        </Text>{' '}
-        toggle mode{' '}
-        <Text color={palette.neonCyan} bold>
-          r
-        </Text>{' '}
-        refresh{' '}
-        <Text color={palette.neonCyan} bold>
-          q
-        </Text>{' '}
-        quit
+        {Math.min(current + 1, total)}-{Math.min(current + visible, total)} of {total}
       </Text>
+      {canDown && <Text color={semantic.dim}>more below {'\u25BC'}</Text>}
     </Box>
   );
 }
@@ -85,11 +150,11 @@ export function Dashboard(): JSX.Element {
   const prStates = useStore(vigilStore, s => s.prStates);
   const scrollOffset = useStore(vigilStore, s => s.scrollOffset);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
-  const mode = useStore(vigilStore, s => s.mode);
+  const viewMode = useStore(vigilStore, s => s.viewMode);
 
   const { stdout } = useStdout();
-  const terminalRows = stdout.rows ?? 24;
-  const visibleRows = Math.max(1, terminalRows - CHROME_LINES);
+  const termWidth = stdout.columns ?? 80;
+  const termRows = stdout.rows ?? 24;
 
   // Sort PRs by state priority, then by updatedAt descending
   const sorted: Array<{ pr: PullRequest; state: PrState }> = Array.from(prs.values())
@@ -103,37 +168,58 @@ export function Dashboard(): JSX.Element {
       return new Date(b.pr.updatedAt).getTime() - new Date(a.pr.updatedAt).getTime();
     });
 
-  // Tally counts per state
-  const counts: Record<PrState, number> = { hot: 0, waiting: 0, ready: 0, blocked: 0, dormant: 0 };
-  for (const { state } of sorted) {
-    counts[state]++;
-  }
+  // Resolve focused key — default to first item if none set
+  const effectiveFocus = focusedPr ?? sorted[0]?.pr.key ?? null;
 
-  // Windowed slice
-  const visible = sorted.slice(scrollOffset, scrollOffset + visibleRows);
-
-  // Resolve focused key — default to first visible if none set
-  const effectiveFocus = focusedPr ?? visible[0]?.pr.key ?? null;
+  // Calculate visible count for scroll indicator
+  const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
+  const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : 2;
+  const chrome = viewMode === 'cards' ? CHROME_LINES_CARD : CHROME_LINES_LIST;
+  const visibleCount =
+    viewMode === 'cards'
+      ? Math.max(1, Math.floor((termRows - chrome) / itemHeight)) * numCols
+      : Math.max(1, termRows - chrome);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Header counts={counts} mode={mode} />
+      {/* Status bar */}
+      <StatusBar />
+      <Box paddingX={1}>
+        <Text color={semantic.dim}>{divider(Math.min(termWidth - 2, 120))}</Text>
+      </Box>
 
-      {visible.length === 0 ? (
-        <Box paddingY={1} justifyContent="center">
-          <Text color={semantic.muted}>No PRs to display. Waiting for poll\u2026</Text>
-        </Box>
+      {/* Main content */}
+      {viewMode === 'cards' ? (
+        <CardGrid
+          items={sorted}
+          focusedPr={effectiveFocus}
+          termWidth={termWidth}
+          termRows={termRows}
+          scrollOffset={scrollOffset}
+        />
       ) : (
-        <Box flexDirection="column">
-          {visible.map(({ pr, state }) => (
-            <PrRow key={pr.key} pr={pr} state={state} isFocused={pr.key === effectiveFocus} />
-          ))}
-        </Box>
+        <ListView
+          items={sorted}
+          focusedPr={effectiveFocus}
+          termRows={termRows}
+          scrollOffset={scrollOffset}
+        />
       )}
 
+      {/* Scroll indicator */}
+      <ScrollIndicator
+        current={scrollOffset * (viewMode === 'cards' ? numCols : 1)}
+        total={sorted.length}
+        visible={visibleCount}
+      />
+
       <Box flexGrow={1} />
+
+      {/* Agent activity */}
       <AgentStatus />
-      <Footer />
+
+      {/* Keybind footer */}
+      <KeybindBar />
     </Box>
   );
 }

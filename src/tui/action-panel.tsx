@@ -3,7 +3,8 @@ import type { JSX } from 'react';
 import { useStore } from 'zustand';
 import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/index.js';
-import { icons, palette, semantic } from './theme.js';
+import { KeybindBar } from './keybind-bar.js';
+import { icons, palette, semantic, truncate } from './theme.js';
 
 // ─── Action Row ───────────────────────────────────────────────────────
 
@@ -27,12 +28,12 @@ function ActionRow({
 
   const statusSymbol =
     action.status === 'approved'
-      ? '\u2713'
+      ? icons.check
       : action.status === 'rejected'
-        ? '\u2717'
+        ? icons.cross
         : action.status === 'executed'
-          ? '\u2022'
-          : '\u25cb';
+          ? icons.dot
+          : '\u25CB';
 
   return (
     <Box
@@ -51,9 +52,7 @@ function ActionRow({
       </Text>
       <Text color={semantic.branch}>{action.prKey}</Text>
       <Text color={semantic.muted} dimColor>
-        {action.description.length > 50
-          ? `${action.description.slice(0, 49)}\u2026`
-          : action.description}
+        {truncate(action.description, 50)}
       </Text>
     </Box>
   );
@@ -70,7 +69,6 @@ function HitlPanel(): JSX.Element {
   const pending = actionQueue.filter(a => a.status === 'pending');
 
   useInput(input => {
-    // Number keys 1-9 to quick-approve
     const num = Number.parseInt(input, 10);
     if (num >= 1 && num <= 9) {
       const action = pending[num - 1];
@@ -80,7 +78,6 @@ function HitlPanel(): JSX.Element {
       return;
     }
 
-    // Approve all pending
     if (input === 'a') {
       for (const action of pending) {
         approveAction(action.id);
@@ -88,7 +85,6 @@ function HitlPanel(): JSX.Element {
       return;
     }
 
-    // Reject selected
     if (input === 'n') {
       const action = pending[selectedAction];
       if (action) {
@@ -98,56 +94,41 @@ function HitlPanel(): JSX.Element {
   });
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor={palette.electricPurple}
-      paddingX={1}
-    >
-      <Box gap={1}>
-        <Text color={palette.electricPurple} bold>
-          Proposed Actions
-        </Text>
-        <Text color={semantic.muted}>({pending.length} pending)</Text>
-      </Box>
-
-      {pending.length === 0 ? (
-        <Text color={semantic.muted} italic>
-          No pending actions
-        </Text>
-      ) : (
-        <Box flexDirection="column">
-          {pending.map((action, i) => (
-            <ActionRow
-              key={action.id}
-              action={action}
-              index={i}
-              isSelected={i === selectedAction}
-            />
-          ))}
+    <Box flexDirection="column" flexGrow={1}>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={palette.electricPurple}
+        paddingX={1}
+        marginX={1}
+      >
+        <Box gap={1}>
+          <Text color={palette.electricPurple} bold>
+            {icons.bolt} Proposed Actions
+          </Text>
+          <Text color={semantic.muted}>({pending.length} pending)</Text>
         </Box>
-      )}
 
-      <Box gap={2} paddingTop={1}>
-        <Text color={semantic.muted}>
-          <Text color={palette.neonCyan} bold>
-            1-9
-          </Text>{' '}
-          approve{' '}
-          <Text color={palette.neonCyan} bold>
-            a
-          </Text>{' '}
-          approve all{' '}
-          <Text color={palette.neonCyan} bold>
-            n
-          </Text>{' '}
-          skip{' '}
-          <Text color={palette.neonCyan} bold>
-            Esc
-          </Text>{' '}
-          back
-        </Text>
+        {pending.length === 0 ? (
+          <Text color={semantic.muted} italic>
+            No pending actions
+          </Text>
+        ) : (
+          <Box flexDirection="column">
+            {pending.map((action, i) => (
+              <ActionRow
+                key={action.id}
+                action={action}
+                index={i}
+                isSelected={i === selectedAction}
+              />
+            ))}
+          </Box>
+        )}
       </Box>
+
+      <Box flexGrow={1} />
+      <KeybindBar />
     </Box>
   );
 }
@@ -159,36 +140,47 @@ function YoloLog(): JSX.Element {
   const recent = actionHistory.slice(-10);
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={palette.neonCyan} paddingX={1}>
-      <Box gap={1}>
-        <Text color={palette.neonCyan} bold>
-          Activity Log
-        </Text>
-        <Text color={semantic.muted}>
-          (YOLO mode {icons.dot} {actionHistory.length} total)
-        </Text>
+    <Box flexDirection="column" flexGrow={1}>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={palette.neonCyan}
+        paddingX={1}
+        marginX={1}
+      >
+        <Box gap={1}>
+          <Text color={palette.neonCyan} bold>
+            {icons.bolt} Activity Log
+          </Text>
+          <Text color={semantic.muted}>
+            (YOLO {icons.middleDot} {actionHistory.length} total)
+          </Text>
+        </Box>
+
+        {recent.length === 0 ? (
+          <Text color={semantic.muted} italic>
+            No actions yet
+          </Text>
+        ) : (
+          <Box flexDirection="column">
+            {recent.map(action => (
+              <Box key={action.id} gap={1} paddingLeft={1}>
+                <Text color={semantic.timestamp} dimColor>
+                  {new Date(action.executedAt).toLocaleTimeString()}
+                </Text>
+                <Text color={action.status === 'executed' ? semantic.success : semantic.error}>
+                  {action.status === 'executed' ? icons.check : icons.cross}
+                </Text>
+                <Text color={palette.coral}>{action.type}</Text>
+                <Text color={semantic.branch}>{action.prKey}</Text>
+              </Box>
+            ))}
+          </Box>
+        )}
       </Box>
 
-      {recent.length === 0 ? (
-        <Text color={semantic.muted} italic>
-          No actions yet
-        </Text>
-      ) : (
-        <Box flexDirection="column">
-          {recent.map(action => (
-            <Box key={action.id} gap={1}>
-              <Text color={semantic.timestamp} dimColor>
-                {new Date(action.executedAt).toLocaleTimeString()}
-              </Text>
-              <Text color={action.status === 'executed' ? semantic.success : semantic.error}>
-                {action.status === 'executed' ? '\u2713' : '\u2717'}
-              </Text>
-              <Text color={palette.coral}>{action.type}</Text>
-              <Text color={semantic.branch}>{action.prKey}</Text>
-            </Box>
-          ))}
-        </Box>
-      )}
+      <Box flexGrow={1} />
+      <KeybindBar />
     </Box>
   );
 }
