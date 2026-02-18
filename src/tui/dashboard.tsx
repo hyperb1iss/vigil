@@ -10,8 +10,33 @@ import { KeybindBar } from './keybind-bar.js';
 import { PrCard } from './pr-card.js';
 import { PrRow, statePriority } from './pr-row.js';
 import { ScrollIndicator } from './scroll-indicator.js';
+import { SearchBar } from './search-bar.js';
 import { StatusBar } from './status-bar.js';
 import { icons, palette, semantic } from './theme.js';
+
+// ─── Search Matching ─────────────────────────────────────────────
+
+/** Case-insensitive fuzzy match: all query chars appear in order in the target. */
+function fuzzyMatch(query: string, target: string): boolean {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
+/** Match a PR against a search query (title, number, repo, branch). */
+function matchesPr(pr: PullRequest, query: string): boolean {
+  if (query.length === 0) return true;
+  return (
+    fuzzyMatch(query, pr.title) ||
+    fuzzyMatch(query, `#${pr.number}`) ||
+    fuzzyMatch(query, pr.repository.nameWithOwner) ||
+    fuzzyMatch(query, pr.headRefName)
+  );
+}
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -168,13 +193,14 @@ export function Dashboard(): JSX.Element {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
+  const searchQuery = useStore(vigilStore, s => s.searchQuery);
 
   const { stdout } = useStdout();
   const termWidth = stdout.columns ?? 80;
   const termRows = stdout.rows ?? 24;
 
   // Sort PRs by state priority, then by updatedAt descending
-  const sorted = useMemo(
+  const allSorted = useMemo(
     () =>
       Array.from(prs.values())
         .map(pr => ({
@@ -189,12 +215,31 @@ export function Dashboard(): JSX.Element {
     [prs, prStates]
   );
 
+  // Apply search filter
+  const sorted = useMemo(
+    () =>
+      searchQuery !== null && searchQuery.length > 0
+        ? allSorted.filter(item => matchesPr(item.pr, searchQuery))
+        : allSorted,
+    [allSorted, searchQuery]
+  );
+
   // Auto-set focusedPr to first item when null and PRs exist
   useEffect(() => {
     if (!focusedPr && sorted.length > 0 && sorted[0]) {
       setFocusedPr(sorted[0].pr.key);
     }
   }, [focusedPr, sorted, setFocusedPr]);
+
+  // When search filters, snap focus to first match
+  useEffect(() => {
+    if (searchQuery && sorted.length > 0 && sorted[0]) {
+      const currentInResults = sorted.some(s => s.pr.key === focusedPr);
+      if (!currentInResults) {
+        setFocusedPr(sorted[0].pr.key);
+      }
+    }
+  }, [searchQuery, sorted, focusedPr, setFocusedPr]);
 
   const effectiveFocus = focusedPr ?? sorted[0]?.pr.key ?? null;
 
@@ -232,13 +277,19 @@ export function Dashboard(): JSX.Element {
     }
   }, [scrollOffset]);
 
+  const isSearchActive = searchQuery !== null;
+
   return (
     <Box flexDirection="column" flexGrow={1}>
       {/* Status bar */}
       <StatusBar />
-      <Box paddingX={1}>
-        <Text color={semantic.dim}>{'\u2500'.repeat(Math.min(termWidth - 2, 120))}</Text>
-      </Box>
+      {isSearchActive ? (
+        <SearchBar query={searchQuery} matchCount={sorted.length} totalCount={allSorted.length} />
+      ) : (
+        <Box paddingX={1}>
+          <Text color={semantic.dim}>{'\u2500'.repeat(Math.min(termWidth - 2, 120))}</Text>
+        </Box>
+      )}
 
       {/* Main content — fills available vertical space */}
       <Box flexDirection="column" flexGrow={1}>

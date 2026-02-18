@@ -16,12 +16,14 @@ export interface UiSlice {
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
+  searchQuery: string | null;
   notifications: Notification[];
   config: VigilConfig;
   setView: (view: ViewName) => void;
   setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
+  setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
   addNotification: (n: Notification) => void;
@@ -35,6 +37,7 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   focusedPr: null,
   selectedAction: 0,
   scrollOffsets: { ...defaultScrollOffsets },
+  searchQuery: null,
   notifications: [],
   config: defaultConfig,
 
@@ -49,6 +52,13 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   setFocusedPr: key => set({ focusedPr: key }),
 
   setMode: mode => set({ mode }),
+
+  setSearchQuery: query =>
+    set(prev => ({
+      searchQuery: query,
+      scrollOffsets:
+        query !== prev.searchQuery ? { ...prev.scrollOffsets, dashboard: 0 } : prev.scrollOffsets,
+    })),
 
   scrollView: (view, delta, max, visible = 1) =>
     set(prev => {

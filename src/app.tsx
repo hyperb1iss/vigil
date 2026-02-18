@@ -31,6 +31,8 @@ export function App(): JSX.Element {
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const searchQuery = useStore(vigilStore, s => s.searchQuery);
+  const setSearchQuery = useStore(vigilStore, s => s.setSearchQuery);
   const detailLineCount = useDetailLineCount();
 
   /** Get PR keys sorted by state priority + updatedAt. */
@@ -77,6 +79,35 @@ export function App(): JSX.Element {
   // ─── Keyboard ─────────────────────────────────────────────────────
 
   useInput((input, key) => {
+    // ─── Search Mode Input ──────────────────────────────────────────
+    if (searchQuery !== null) {
+      if (key.escape) {
+        setSearchQuery(null);
+        return;
+      }
+      if (key.return) {
+        // Keep filter active, exit search input mode
+        if (searchQuery.length === 0) {
+          setSearchQuery(null); // Empty query = cancel
+        }
+        return;
+      }
+      if (key.backspace || key.delete) {
+        if (searchQuery.length === 0) {
+          setSearchQuery(null);
+        } else {
+          setSearchQuery(searchQuery.slice(0, -1));
+        }
+        return;
+      }
+      // Append printable characters to query
+      if (input && !key.ctrl && !key.meta) {
+        setSearchQuery(searchQuery + input);
+      }
+      return;
+    }
+
+    // ─── Normal Mode ────────────────────────────────────────────────
     if (input === 'q') {
       exit();
       return;
@@ -131,6 +162,7 @@ export function App(): JSX.Element {
 
     if (key.escape) {
       if (view !== 'dashboard') {
+        setSearchQuery(null);
         setView('dashboard');
       }
       return;
@@ -170,6 +202,12 @@ export function App(): JSX.Element {
       } else if (view === 'detail') {
         scrollView('detail', detailLineCount, detailLineCount);
       }
+      return;
+    }
+
+    // Search (dashboard only)
+    if (input === '/' && view === 'dashboard') {
+      setSearchQuery('');
       return;
     }
 

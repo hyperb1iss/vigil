@@ -33,6 +33,7 @@ export interface VigilStore {
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
+  searchQuery: string | null; // null = inactive, string = active filter
 
   // Notifications
   notifications: Notification[];
@@ -58,6 +59,7 @@ export interface VigilStore {
   setViewMode: (viewMode: ViewMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
+  setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
 
