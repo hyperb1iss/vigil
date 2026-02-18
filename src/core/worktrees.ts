@@ -82,13 +82,13 @@ async function listWorktreesInDir(dir: string): Promise<WorktreeInfo[]> {
  * Duplicate branches are resolved by last-write-wins (later search paths override).
  */
 export async function discoverWorktrees(
-  searchPaths?: string[],
+  searchPaths?: string[]
 ): Promise<Map<string, WorktreeInfo>> {
   const dirs = searchPaths && searchPaths.length > 0 ? searchPaths : [process.cwd()];
   const map = new Map<string, WorktreeInfo>();
 
   // Fan out discovery across all search paths concurrently
-  const results = await Promise.all(dirs.map((dir) => listWorktreesInDir(dir)));
+  const results = await Promise.all(dirs.map(dir => listWorktreesInDir(dir)));
 
   for (const worktrees of results) {
     for (const wt of worktrees) {
@@ -108,7 +108,7 @@ export async function discoverWorktrees(
  */
 export function findWorktreeForBranch(
   branch: string,
-  worktrees: Map<string, WorktreeInfo>,
+  worktrees: Map<string, WorktreeInfo>
 ): WorktreeInfo | undefined {
   const bare = branch.startsWith('refs/heads/') ? branch.slice('refs/heads/'.length) : branch;
   return worktrees.get(bare);
@@ -150,7 +150,7 @@ export async function getWorktreeStatus(path: string): Promise<PrWorktree> {
 export async function createWorktree(
   repoDir: string,
   branch: string,
-  targetDir: string,
+  targetDir: string
 ): Promise<string> {
   await execFileAsync('git', ['worktree', 'add', targetDir, branch], {
     cwd: repoDir,

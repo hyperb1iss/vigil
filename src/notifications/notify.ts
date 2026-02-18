@@ -7,7 +7,7 @@ export async function sendDesktopNotification(
   title: string,
   body: string,
   subtitle?: string,
-  sound?: boolean,
+  sound?: boolean
 ): Promise<void> {
   if (process.platform === 'darwin') {
     await sendMacNotification(title, body, subtitle, sound);
@@ -20,7 +20,7 @@ async function sendMacNotification(
   title: string,
   body: string,
   subtitle?: string,
-  sound?: boolean,
+  sound?: boolean
 ): Promise<void> {
   const parts = [`display notification ${escapeAppleScript(body)}`];
   parts.push(`with title ${escapeAppleScript(title)}`);

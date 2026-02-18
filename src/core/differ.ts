@@ -7,7 +7,7 @@ import type { PullRequest } from '../types/pr.js';
  */
 export function diffPrs(
   previous: Map<string, PullRequest>,
-  current: Map<string, PullRequest>,
+  current: Map<string, PullRequest>
 ): PrEvent[] {
   const events: PrEvent[] = [];
   const now = new Date().toISOString();
@@ -36,7 +36,7 @@ export function diffPrs(
     }
 
     // New reviews
-    const prevReviewIds = new Set(prev.reviews.map((r) => r.id));
+    const prevReviewIds = new Set(prev.reviews.map(r => r.id));
     for (const review of pr.reviews) {
       if (!prevReviewIds.has(review.id)) {
         events.push({
@@ -50,7 +50,7 @@ export function diffPrs(
     }
 
     // New comments
-    const prevCommentIds = new Set(prev.comments.map((c) => c.id));
+    const prevCommentIds = new Set(prev.comments.map(c => c.id));
     for (const comment of pr.comments) {
       if (!prevCommentIds.has(comment.id)) {
         events.push({
@@ -82,10 +82,10 @@ export function diffPrs(
     }
 
     // Label changes
-    const prevLabels = new Set(prev.labels.map((l) => l.name));
-    const currLabels = new Set(pr.labels.map((l) => l.name));
-    const added = [...currLabels].filter((l) => !prevLabels.has(l));
-    const removed = [...prevLabels].filter((l) => !currLabels.has(l));
+    const prevLabels = new Set(prev.labels.map(l => l.name));
+    const currLabels = new Set(pr.labels.map(l => l.name));
+    const added = [...currLabels].filter(l => !prevLabels.has(l));
+    const removed = [...prevLabels].filter(l => !currLabels.has(l));
     if (added.length > 0 || removed.length > 0) {
       events.push({
         type: 'labels_changed',
@@ -121,8 +121,8 @@ export function diffPrs(
 function checksChanged(prev: PullRequest, curr: PullRequest): boolean {
   if (prev.checks.length !== curr.checks.length) return true;
 
-  const prevMap = new Map(prev.checks.map((c) => [c.name, c.conclusion]));
-  return curr.checks.some((c) => prevMap.get(c.name) !== c.conclusion);
+  const prevMap = new Map(prev.checks.map(c => [c.name, c.conclusion]));
+  return curr.checks.some(c => prevMap.get(c.name) !== c.conclusion);
 }
 
 /** Determine if a PR is in a "ready to merge" state. */
@@ -130,10 +130,7 @@ function isReadyToMerge(pr: PullRequest): boolean {
   const allGreen =
     pr.checks.length > 0 &&
     pr.checks.every(
-      (c) =>
-        c.conclusion === 'SUCCESS' ||
-        c.conclusion === 'SKIPPED' ||
-        c.conclusion === 'NEUTRAL',
+      c => c.conclusion === 'SUCCESS' || c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL'
     );
   return allGreen && pr.reviewDecision === 'APPROVED' && pr.mergeable === 'MERGEABLE';
 }

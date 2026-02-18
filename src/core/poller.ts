@@ -1,9 +1,9 @@
-import { fetchMyOpenPrs } from './github.js';
-import { diffPrs } from './differ.js';
-import { classifyPr } from './state-machine.js';
 import { vigilStore } from '../store/index.js';
-import type { PullRequest } from '../types/pr.js';
 import type { PrEvent } from '../types/events.js';
+import type { PullRequest } from '../types/pr.js';
+import { diffPrs } from './differ.js';
+import { fetchMyOpenPrs } from './github.js';
+import { classifyPr } from './state-machine.js';
 
 export interface PollerOptions {
   intervalMs: number;

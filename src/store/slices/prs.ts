@@ -14,24 +14,23 @@ export interface PrSlice {
   setLastPollAt: (timestamp: string) => void;
 }
 
-export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = (set) => ({
+export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = set => ({
   prs: new Map(),
   prStates: new Map(),
   lastPollAt: null,
   isPolling: false,
 
-  setPrs: (prs) =>
-    set({ prs }),
+  setPrs: prs => set({ prs }),
 
   setPrState: (key, state) =>
-    set((prev) => {
+    set(prev => {
       const next = new Map(prev.prStates);
       next.set(key, state);
       return { prStates: next };
     }),
 
   updatePr: (key, update) =>
-    set((prev) => {
+    set(prev => {
       const existing = prev.prs.get(key);
       if (!existing) return {};
       const next = new Map(prev.prs);
@@ -39,6 +38,6 @@ export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = (set) =>
       return { prs: next };
     }),
 
-  setPolling: (isPolling) => set({ isPolling }),
-  setLastPollAt: (timestamp) => set({ lastPollAt: timestamp }),
+  setPolling: isPolling => set({ isPolling }),
+  setLastPollAt: timestamp => set({ lastPollAt: timestamp }),
 });

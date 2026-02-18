@@ -34,11 +34,11 @@ export const prStateColors: Record<PrState, string> = {
 // ─── PR State → Indicator ──────────────────────────────────────────
 
 export const stateIndicators: Record<PrState, string> = {
-  hot: '\u{1F534}',      // 🔴
-  waiting: '\u{1F7E1}',  // 🟡
-  ready: '\u{1F7E2}',    // 🟢
-  dormant: '\u26AB',     // ⚫
-  blocked: '\u{1F7E3}',  // 🟣
+  hot: '\u{1F534}', // 🔴
+  waiting: '\u{1F7E1}', // 🟡
+  ready: '\u{1F7E2}', // 🟢
+  dormant: '\u26AB', // ⚫
+  blocked: '\u{1F7E3}', // 🟣
 };
 
 // ─── PR State → Label ──────────────────────────────────────────────
@@ -76,18 +76,18 @@ export const semantic = {
 // ─── CI Check Indicators ────────────────────────────────────────────
 
 export const checkIndicators = {
-  passing: { symbol: '\u2714', color: palette.successGreen },  // ✔
-  failing: { symbol: '\u2718', color: palette.errorRed },      // ✘
+  passing: { symbol: '\u2714', color: palette.successGreen }, // ✔
+  failing: { symbol: '\u2718', color: palette.errorRed }, // ✘
   pending: { symbol: '\u25CF', color: palette.electricYellow }, // ●
-  skipped: { symbol: '\u2500', color: palette.muted },         // ─
+  skipped: { symbol: '\u2500', color: palette.muted }, // ─
 } as const;
 
 // ─── UI Icons ───────────────────────────────────────────────────────
 
 export const icons = {
-  branch: '\u{E0A0}',  //  (Powerline branch)
-  pr: '\u{2387}',      // ⎇  (alternative)
+  branch: '\u{E0A0}', //  (Powerline branch)
+  pr: '\u{2387}', // ⎇  (alternative)
   folder: '\u{1F4C1}', // 📁
-  arrow: '\u2192',     // →
-  dot: '\u2022',       // •
+  arrow: '\u2192', // →
+  dot: '\u2022', // •
 } as const;

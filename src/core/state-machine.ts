@@ -15,7 +15,7 @@ export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrSt
     return 'blocked';
   }
 
-  const hasCiFailure = pr.checks.some((c) => c.conclusion === 'FAILURE');
+  const hasCiFailure = pr.checks.some(c => c.conclusion === 'FAILURE');
   const hasBlockingReview = pr.reviewDecision === 'CHANGES_REQUESTED';
   const hasConflict = pr.mergeable === 'CONFLICTING';
 
@@ -26,10 +26,7 @@ export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrSt
   const allChecksPassing =
     pr.checks.length > 0 &&
     pr.checks.every(
-      (c) =>
-        c.conclusion === 'SUCCESS' ||
-        c.conclusion === 'SKIPPED' ||
-        c.conclusion === 'NEUTRAL',
+      c => c.conclusion === 'SUCCESS' || c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL'
     );
   const isApproved = pr.reviewDecision === 'APPROVED';
   const isMergeable = pr.mergeable === 'MERGEABLE';
@@ -38,8 +35,7 @@ export function classifyPr(pr: PullRequest, dormantThresholdHours: number): PrSt
     return 'ready';
   }
 
-  const hoursSinceUpdate =
-    (Date.now() - new Date(pr.updatedAt).getTime()) / (1000 * 60 * 60);
+  const hoursSinceUpdate = (Date.now() - new Date(pr.updatedAt).getTime()) / (1000 * 60 * 60);
 
   if (hoursSinceUpdate > dormantThresholdHours) {
     return 'dormant';

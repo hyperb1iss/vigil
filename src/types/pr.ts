@@ -4,12 +4,7 @@ export type CheckStatus = 'COMPLETED' | 'IN_PROGRESS' | 'QUEUED' | 'PENDING';
 export type CheckConclusion = 'SUCCESS' | 'FAILURE' | 'SKIPPED' | 'CANCELLED' | 'NEUTRAL' | null;
 export type MergeableState = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
 export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | '';
-export type ReviewState =
-  | 'APPROVED'
-  | 'CHANGES_REQUESTED'
-  | 'COMMENTED'
-  | 'DISMISSED'
-  | 'PENDING';
+export type ReviewState = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING';
 
 export interface PrAuthor {
   login: string;

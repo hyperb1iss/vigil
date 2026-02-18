@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
-import type { Notification, ViewName, VigilStore } from '../../types/store.js';
-import type { VigilConfig } from '../../types/config.js';
 import { defaultConfig } from '../../config/defaults.js';
+import type { VigilConfig } from '../../types/config.js';
+import type { Notification, ViewName, VigilStore } from '../../types/store.js';
 
 export interface UiSlice {
   mode: 'hitl' | 'yolo';
@@ -20,7 +20,7 @@ export interface UiSlice {
   markRead: (id: string) => void;
 }
 
-export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = (set) => ({
+export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => ({
   mode: 'hitl',
   view: 'dashboard',
   focusedPr: null,
@@ -29,31 +29,29 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = (set) =>
   notifications: [],
   config: defaultConfig,
 
-  setView: (view) => set({ view, scrollOffset: 0 }),
+  setView: view => set({ view, scrollOffset: 0 }),
 
-  setFocusedPr: (key) => set({ focusedPr: key }),
+  setFocusedPr: key => set({ focusedPr: key }),
 
-  setMode: (mode) => set({ mode }),
+  setMode: mode => set({ mode }),
 
   scrollUp: () =>
-    set((prev) => ({
+    set(prev => ({
       scrollOffset: Math.max(0, prev.scrollOffset - 1),
     })),
 
   scrollDown: () =>
-    set((prev) => ({
+    set(prev => ({
       scrollOffset: prev.scrollOffset + 1,
     })),
 
-  addNotification: (n) =>
-    set((prev) => ({
+  addNotification: n =>
+    set(prev => ({
       notifications: [n, ...prev.notifications],
     })),
 
-  markRead: (id) =>
-    set((prev) => ({
-      notifications: prev.notifications.map((n) =>
-        n.id === id ? { ...n, read: true } : n,
-      ),
+  markRead: id =>
+    set(prev => ({
+      notifications: prev.notifications.map(n => (n.id === id ? { ...n, read: true } : n)),
     })),
 });

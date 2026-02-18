@@ -14,20 +14,20 @@ export interface AgentSlice {
   rejectAction: (id: string) => void;
 }
 
-export const createAgentSlice: StateCreator<VigilStore, [], [], AgentSlice> = (set) => ({
+export const createAgentSlice: StateCreator<VigilStore, [], [], AgentSlice> = set => ({
   activeAgents: new Map(),
   actionQueue: [],
   actionHistory: [],
 
-  startAgentRun: (run) =>
-    set((prev) => {
+  startAgentRun: run =>
+    set(prev => {
       const next = new Map(prev.activeAgents);
       next.set(run.id, run);
       return { activeAgents: next };
     }),
 
   updateAgentRun: (id, update) =>
-    set((prev) => {
+    set(prev => {
       const existing = prev.activeAgents.get(id);
       if (!existing) return {};
       const next = new Map(prev.activeAgents);
@@ -36,30 +36,35 @@ export const createAgentSlice: StateCreator<VigilStore, [], [], AgentSlice> = (s
     }),
 
   completeAgentRun: (id, result) =>
-    set((prev) => {
+    set(prev => {
       const existing = prev.activeAgents.get(id);
       if (!existing) return {};
       const next = new Map(prev.activeAgents);
-      next.set(id, { ...existing, status: 'completed', completedAt: new Date().toISOString(), result });
+      next.set(id, {
+        ...existing,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        result,
+      });
       return { activeAgents: next };
     }),
 
-  enqueueAction: (action) =>
-    set((prev) => ({
+  enqueueAction: action =>
+    set(prev => ({
       actionQueue: [...prev.actionQueue, action],
     })),
 
-  approveAction: (id) =>
-    set((prev) => ({
-      actionQueue: prev.actionQueue.map((a) =>
-        a.id === id ? { ...a, status: 'approved' as const } : a,
+  approveAction: id =>
+    set(prev => ({
+      actionQueue: prev.actionQueue.map(a =>
+        a.id === id ? { ...a, status: 'approved' as const } : a
       ),
     })),
 
-  rejectAction: (id) =>
-    set((prev) => ({
-      actionQueue: prev.actionQueue.map((a) =>
-        a.id === id ? { ...a, status: 'rejected' as const } : a,
+  rejectAction: id =>
+    set(prev => ({
+      actionQueue: prev.actionQueue.map(a =>
+        a.id === id ? { ...a, status: 'rejected' as const } : a
       ),
     })),
 });

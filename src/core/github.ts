@@ -26,7 +26,7 @@ export class GhError extends Error {
   constructor(
     message: string,
     public readonly exitCode: number,
-    public readonly stderr: string,
+    public readonly stderr: string
   ) {
     super(message);
     this.name = 'GhError';
@@ -229,11 +229,7 @@ export async function runGh(args: string[]): Promise<string> {
 }
 
 /** Classify gh CLI errors into specific error types */
-function throwClassifiedError(
-  exitCode: number,
-  stderr: string,
-  args: string[],
-): never {
+function throwClassifiedError(exitCode: number, stderr: string, args: string[]): never {
   const lower = stderr.toLowerCase();
 
   if (
@@ -244,18 +240,14 @@ function throwClassifiedError(
     throw new GhAuthError(stderr);
   }
 
-  if (
-    lower.includes('rate limit') ||
-    lower.includes('api rate') ||
-    lower.includes('403')
-  ) {
+  if (lower.includes('rate limit') || lower.includes('api rate') || lower.includes('403')) {
     throw new GhRateLimitError(stderr);
   }
 
   throw new GhError(
     `gh ${args.join(' ')} failed (exit ${exitCode}): ${stderr.slice(0, 500)}`,
     exitCode,
-    stderr,
+    stderr
   );
 }
 
@@ -266,10 +258,7 @@ function normalizeAuthor(raw?: GhAuthor): PrAuthor {
   return {
     login,
     name: raw?.name,
-    isBot:
-      login.endsWith('[bot]') ||
-      raw?.type === 'Bot' ||
-      raw?.is_bot === true,
+    isBot: login.endsWith('[bot]') || raw?.type === 'Bot' || raw?.is_bot === true,
   };
 }
 
@@ -308,7 +297,7 @@ function normalizeComment(raw: GhCommentNode): PrComment {
 function normalizeChecks(items: GhCheckRollupItem[] | null): PrCheck[] {
   if (!items) return [];
 
-  return items.map((item) => {
+  return items.map(item => {
     if (item.__typename === 'StatusContext') {
       return {
         name: item.context ?? 'unknown',
@@ -373,10 +362,7 @@ function normalizeReviewDecision(raw: string | undefined): ReviewDecision {
 // ─── PR Builders ────────────────────────────────────────────────────────────
 
 /** Build a PullRequest from the full detail data (gh pr list / gh pr view) */
-function buildPrFromDetail(
-  raw: GhPrDetail,
-  nameWithOwner: string,
-): PullRequest {
+function buildPrFromDetail(raw: GhPrDetail, nameWithOwner: string): PullRequest {
   const repoName = nameWithOwner.split('/')[1] ?? nameWithOwner;
   return {
     key: `${nameWithOwner}#${raw.number}`,
@@ -464,9 +450,7 @@ function normalizeState(raw: string): 'OPEN' | 'CLOSED' | 'MERGED' {
  *
  * The detail pass replaces the search-pass stubs so we get complete data.
  */
-export async function fetchMyOpenPrs(
-  repos?: string[],
-): Promise<PullRequest[]> {
+export async function fetchMyOpenPrs(repos?: string[]): Promise<PullRequest[]> {
   // Pass 1: Discover open PRs via search
   const searchArgs = [
     'search',
@@ -504,7 +488,7 @@ export async function fetchMyOpenPrs(
   }
 
   // Pass 2: Fetch full detail per-repo
-  const detailPromises = [...repoSet].map(async (nameWithOwner) => {
+  const detailPromises = [...repoSet].map(async nameWithOwner => {
     try {
       const detailJson = await runGh([
         'pr',
@@ -538,7 +522,7 @@ export async function fetchMyOpenPrs(
 export async function fetchPrDetail(
   owner: string,
   repo: string,
-  number: number,
+  number: number
 ): Promise<PullRequest> {
   const nameWithOwner = `${owner}/${repo}`;
   const json = await runGh([
@@ -560,16 +544,9 @@ export async function postComment(
   owner: string,
   repo: string,
   number: number,
-  body: string,
+  body: string
 ): Promise<void> {
-  await runGh([
-    'pr',
-    'comment',
-    String(number),
-    `--repo=${owner}/${repo}`,
-    '--body',
-    body,
-  ]);
+  await runGh(['pr', 'comment', String(number), `--repo=${owner}/${repo}`, '--body', body]);
 }
 
 /**
@@ -580,17 +557,11 @@ export async function editComment(
   _owner: string,
   _repo: string,
   commentUrl: string,
-  body: string,
+  body: string
 ): Promise<void> {
   // gh api expects a relative path or full URL — extract the API path
   const apiPath = extractApiPath(commentUrl);
-  await runGh([
-    'api',
-    apiPath,
-    '--method=PATCH',
-    '--field',
-    `body=${body}`,
-  ]);
+  await runGh(['api', apiPath, '--method=PATCH', '--field', `body=${body}`]);
 }
 
 /**
@@ -600,22 +571,11 @@ export async function mergePr(
   owner: string,
   repo: string,
   number: number,
-  method: 'merge' | 'squash' | 'rebase' = 'squash',
+  method: 'merge' | 'squash' | 'rebase' = 'squash'
 ): Promise<void> {
-  const flag =
-    method === 'merge'
-      ? '--merge'
-      : method === 'rebase'
-        ? '--rebase'
-        : '--squash';
+  const flag = method === 'merge' ? '--merge' : method === 'rebase' ? '--rebase' : '--squash';
 
-  await runGh([
-    'pr',
-    'merge',
-    String(number),
-    `--repo=${owner}/${repo}`,
-    flag,
-  ]);
+  await runGh(['pr', 'merge', String(number), `--repo=${owner}/${repo}`, flag]);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -638,9 +598,7 @@ function extractApiPath(url: string): string {
 
     // Web URL: https://github.com/owner/repo/pull/1#issuecomment-123
     // Convert to API path
-    const match = parsed.pathname.match(
-      /^\/([^/]+\/[^/]+)\/(?:pull|issues)\/\d+/,
-    );
+    const match = parsed.pathname.match(/^\/([^/]+\/[^/]+)\/(?:pull|issues)\/\d+/);
     const fragment = parsed.hash.match(/issuecomment-(\d+)/);
     if (match?.[1] && fragment?.[1]) {
       return `/repos/${match[1]}/issues/comments/${fragment[1]}`;
