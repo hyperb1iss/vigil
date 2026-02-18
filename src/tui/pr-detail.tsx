@@ -19,8 +19,8 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-/** Footer lines: scroll indicator (1) + keybind bar divider (1) + keybind bar (1) */
-const FOOTER_LINES = 3;
+/** Non-content chrome: breadcrumb (1) + scroll indicator (1) + keybind bar divider (1) + keybind bar (1) */
+const CHROME_LINES = 4;
 const MAX_INLINE_PASSING = 4;
 const MAX_COMMENTS = 12;
 const MAX_COMMENT_BODY = 3;
@@ -819,7 +819,7 @@ export function PrDetail(): JSX.Element | null {
 
   if (!focusedPr || !pr) return null;
 
-  const availableHeight = Math.max(1, termRows - headerLines.length - FOOTER_LINES);
+  const availableHeight = Math.max(1, termRows - headerLines.length - CHROME_LINES);
 
   // Clamp scroll so content can't scroll past the end
   const maxScroll = Math.max(0, contentLines.length - availableHeight);
@@ -828,6 +828,19 @@ export function PrDetail(): JSX.Element | null {
 
   return (
     <Box flexDirection="column" flexGrow={1}>
+      {/* ── Breadcrumb ───────────────────────────────────────────── */}
+      <Box paddingX={1}>
+        <Text>
+          <Text color={semantic.dim}>{'Esc'}</Text>
+          <Text color={semantic.dim}>{' ‹ '}</Text>
+          <Text color={semantic.muted}>Dashboard</Text>
+          <Text color={semantic.dim}>{' › '}</Text>
+          <Text color={palette.neonCyan}>{pr.repository.nameWithOwner}</Text>
+          <Text color={semantic.dim}>{'#'}</Text>
+          <Text color={palette.coral}>{pr.number}</Text>
+        </Text>
+      </Box>
+
       {/* ── Header Card (fixed) ─────────────────────────────────── */}
       <Box flexDirection="column" paddingX={1}>
         {headerLines.map(line => (
