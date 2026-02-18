@@ -10,10 +10,10 @@ interface Keybind {
 }
 
 const DASHBOARD_BINDS: Keybind[] = [
-  { key: 'hjkl', label: 'navigate' },
-  { key: 'g/G', label: 'top/bottom' },
-  { key: '/', label: 'search' },
+  { key: '↑↓←→', label: 'navigate' },
+  { key: 'Tab', label: 'next' },
   { key: '↵', label: 'detail' },
+  { key: '/', label: 'search' },
   { key: 'v', label: 'view' },
   { key: 'r', label: 'refresh' },
   { key: '?', label: 'help' },
@@ -22,8 +22,8 @@ const DASHBOARD_BINDS: Keybind[] = [
 
 const DETAIL_BINDS: Keybind[] = [
   { key: 'Esc', label: 'back' },
-  { key: 'j/k', label: 'scroll' },
-  { key: 'g/G', label: 'top/bottom' },
+  { key: '↑↓', label: 'scroll' },
+  { key: 'Tab', label: 'page' },
   { key: 'a', label: 'actions' },
   { key: '?', label: 'help' },
   { key: 'q', label: 'quit' },

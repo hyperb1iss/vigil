@@ -15,14 +15,13 @@ const HELP_GROUPS: KeyGroup[] = [
     title: 'Navigation',
     color: palette.neonCyan,
     binds: [
-      { key: 'j / ↓', desc: 'Move down' },
-      { key: 'k / ↑', desc: 'Move up' },
-      { key: 'h / ←', desc: 'Move left (cards)' },
-      { key: 'l / →', desc: 'Move right (cards)' },
-      { key: 'g', desc: 'Jump to top' },
-      { key: 'G', desc: 'Jump to bottom' },
+      { key: '↑ / ↓', desc: 'Move up / down' },
+      { key: '← / →', desc: 'Move left / right (cards)' },
+      { key: 'Tab', desc: 'Next PR' },
+      { key: 'Shift+Tab', desc: 'Previous PR' },
       { key: 'Enter', desc: 'Open detail view' },
       { key: 'Esc', desc: 'Go back' },
+      { key: 'g / G', desc: 'Jump to top / bottom' },
     ],
   },
   {
@@ -47,7 +46,9 @@ const HELP_GROUPS: KeyGroup[] = [
     title: 'Detail View',
     color: palette.coral,
     binds: [
-      { key: 'j / k', desc: 'Scroll content' },
+      { key: '↑ / ↓', desc: 'Scroll content' },
+      { key: 'Tab', desc: 'Page down' },
+      { key: 'Shift+Tab', desc: 'Page up' },
       { key: 'g / G', desc: 'Top / bottom' },
       { key: 'a', desc: 'Open action panel' },
     ],
@@ -60,6 +61,11 @@ const HELP_GROUPS: KeyGroup[] = [
       { key: 'a', desc: 'Approve all' },
       { key: 'n', desc: 'Skip action' },
     ],
+  },
+  {
+    title: 'Vim Motions',
+    color: semantic.dim,
+    binds: [{ key: 'h j k l', desc: 'Navigate (same as arrows)' }],
   },
 ];
 

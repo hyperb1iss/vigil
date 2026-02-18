@@ -128,6 +128,16 @@ export function App(): JSX.Element {
       return;
     }
 
+    // Tab / Shift+Tab — sequential PR cycling (dashboard), scroll (detail)
+    if (key.tab) {
+      if (view === 'dashboard') {
+        moveFocus(key.shift ? -1 : 1);
+      } else if (view === 'detail') {
+        scrollView('detail', key.shift ? -5 : 5, detailLineCount);
+      }
+      return;
+    }
+
     if (input === 'k' || key.upArrow) {
       if (view === 'dashboard') {
         moveFocus(-numCols); // Move up one row
