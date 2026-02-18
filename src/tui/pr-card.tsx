@@ -24,15 +24,8 @@ import {
 
 const CI_WIDTH = 10;
 
-function CiBar({ checks }: { checks: PrCheck[] }): JSX.Element {
-  if (checks.length === 0) {
-    return (
-      <Text>
-        <Text color={semantic.dim}>CI </Text>
-        <Text color={semantic.dim}>{'─'.repeat(CI_WIDTH)}</Text>
-      </Text>
-    );
-  }
+function CiBar({ checks }: { checks: PrCheck[] }): JSX.Element | null {
+  if (checks.length === 0) return null;
 
   const total = checks.length;
   const passed = checks.filter(
@@ -168,12 +161,9 @@ export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Elemen
       <Box>
         <Text>
           <Text>{stateIndicators[state]}</Text>
-          <Text color={stateColor} bold>
-            {' '}
-            {stateLabels[state]}
-          </Text>
+          <Text color={stateColor}> {stateLabels[state]}</Text>
           <Text color={semantic.dim}>{' · '}</Text>
-          <Text color={palette.neonCyan} bold>
+          <Text color={palette.neonCyan}>
             {'#'}
             {pr.number}
           </Text>
@@ -199,8 +189,8 @@ export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Elemen
         </Text>
       </Box>
 
-      {/* Row 2: Title (hero — full width) */}
-      <Text wrap="truncate-end" color={palette.fg} bold={isFocused}>
+      {/* Row 2: Title (hero — full width, always bold) */}
+      <Text wrap="truncate-end" color={palette.fg} bold>
         {pr.title}
       </Text>
 
