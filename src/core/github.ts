@@ -654,3 +654,22 @@ function extractApiPath(url: string): string {
   // Last resort: pass through and let gh figure it out
   return url;
 }
+
+// ─── Test Exports ────────────────────────────────────────────────────────────
+
+/** Exposed for unit testing only. Do not use in production code. */
+export const _internal = {
+  normalizeAuthor,
+  normalizeLabel,
+  normalizeReview,
+  normalizeComment,
+  normalizeChecks,
+  normalizeMergeable,
+  normalizeReviewDecision,
+  normalizeState,
+  mapStatusContextState,
+  extractApiPath,
+  throwClassifiedError,
+  buildPrFromDetail,
+  buildPrFromSearch,
+};
