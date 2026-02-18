@@ -54,13 +54,17 @@ export function App(): JSX.Element {
       .map(pr => pr.key);
   }, [prs, prStates]);
 
+  /** Number of card columns based on terminal width. */
+  const numCols = viewMode === 'cards' ? ((stdout.columns ?? 120) >= 140 ? 2 : 1) : 1;
+
   /** Move focus by delta within the sorted PR list. */
   const moveFocus = useCallback(
     (delta: number): void => {
       const sorted = getSortedKeys();
       if (sorted.length === 0) return;
 
-      const currentIdx = focusedPr ? sorted.indexOf(focusedPr) : -1;
+      // Default to first item when no focus set
+      const currentIdx = focusedPr ? sorted.indexOf(focusedPr) : 0;
       const nextIdx = Math.max(0, Math.min(sorted.length - 1, currentIdx + delta));
       const nextKey = sorted[nextIdx];
       if (nextKey !== undefined) {
@@ -80,30 +84,47 @@ export function App(): JSX.Element {
 
     if (input === 'k' || key.upArrow) {
       if (view === 'dashboard') {
-        scrollView('dashboard', -1, getSortedKeys().length);
-        moveFocus(-1);
+        moveFocus(-numCols); // Move up one row
       } else if (view === 'detail') {
         scrollView('detail', -1, detailLineCount);
       }
-      // Action panel handles its own j/k
       return;
     }
 
     if (input === 'j' || key.downArrow) {
       if (view === 'dashboard') {
-        const sorted = getSortedKeys();
-        scrollView('dashboard', 1, sorted.length);
-        moveFocus(1);
+        moveFocus(numCols); // Move down one row
       } else if (view === 'detail') {
         scrollView('detail', 1, detailLineCount);
       }
-      // Action panel handles its own j/k
+      return;
+    }
+
+    // Column navigation (dashboard only)
+    if (input === 'h' || key.leftArrow) {
+      if (view === 'dashboard' && numCols > 1) {
+        moveFocus(-1);
+      }
+      return;
+    }
+
+    if (input === 'l' || key.rightArrow) {
+      if (view === 'dashboard' && numCols > 1) {
+        moveFocus(1);
+      }
       return;
     }
 
     if (key.return) {
-      if (focusedPr && view === 'dashboard') {
-        setView('detail');
+      if (view === 'dashboard') {
+        // If no PR focused yet, default to first in list
+        if (!focusedPr) {
+          const sorted = getSortedKeys();
+          if (sorted[0]) setFocusedPr(sorted[0]);
+        }
+        if (focusedPr || getSortedKeys().length > 0) {
+          setView('detail');
+        }
       }
       return;
     }
@@ -130,6 +151,28 @@ export function App(): JSX.Element {
       return;
     }
 
+    // Jump to top/bottom (vim g/G)
+    if (input === 'g') {
+      if (view === 'dashboard') {
+        const sorted = getSortedKeys();
+        if (sorted[0]) setFocusedPr(sorted[0]);
+      } else if (view === 'detail') {
+        scrollView('detail', -detailLineCount, detailLineCount);
+      }
+      return;
+    }
+
+    if (input === 'G') {
+      if (view === 'dashboard') {
+        const sorted = getSortedKeys();
+        const last = sorted[sorted.length - 1];
+        if (last) setFocusedPr(last);
+      } else if (view === 'detail') {
+        scrollView('detail', detailLineCount, detailLineCount);
+      }
+      return;
+    }
+
     if (input === 'r') {
       void poll();
     }
@@ -139,22 +182,19 @@ export function App(): JSX.Element {
 
   const handleMouse = useCallback(
     (event: MouseEvent) => {
+      // Scroll wheel — works on dashboard + detail views
+      if (event.button === 64 || event.button === 65) {
+        const delta = event.button === 64 ? -1 : 1;
+        if (view === 'dashboard') {
+          moveFocus(delta * numCols); // Scroll by row
+        } else if (view === 'detail') {
+          scrollView('detail', delta, detailLineCount);
+        }
+        return;
+      }
+
+      // Left click — only dashboard
       if (view !== 'dashboard') return;
-
-      // Scroll wheel
-      if (event.button === 64) {
-        scrollView('dashboard', -1, getSortedKeys().length);
-        moveFocus(-1);
-        return;
-      }
-      if (event.button === 65) {
-        const sorted = getSortedKeys();
-        scrollView('dashboard', 1, sorted.length);
-        moveFocus(1);
-        return;
-      }
-
-      // Left click — calculate which PR was clicked
       if (event.button === 0 && !event.isRelease) {
         const sorted = getSortedKeys();
         if (sorted.length === 0) return;
@@ -195,6 +235,8 @@ export function App(): JSX.Element {
       focusedPr,
       setView,
       stdout,
+      detailLineCount,
+      numCols,
     ]
   );
 
