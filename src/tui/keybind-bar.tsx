@@ -16,6 +16,7 @@ const DASHBOARD_BINDS: Keybind[] = [
   { key: '/', label: 'search' },
   { key: 's', label: 'sort' },
   { key: 'v', label: 'view' },
+  { key: 'o', label: 'open' },
   { key: 'r', label: 'refresh' },
   { key: '?', label: 'help' },
   { key: 'q', label: 'quit' },
@@ -26,6 +27,7 @@ const DETAIL_BINDS: Keybind[] = [
   { key: '↑↓', label: 'scroll' },
   { key: 'Tab', label: 'page' },
   { key: 'a', label: 'actions' },
+  { key: 'o', label: 'open' },
   { key: '?', label: 'help' },
   { key: 'q', label: 'quit' },
 ];

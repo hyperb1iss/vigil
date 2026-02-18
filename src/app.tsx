@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { Box, useApp, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useCallback, useState } from 'react';
@@ -10,6 +11,13 @@ import { HelpOverlay } from './tui/help-overlay.js';
 import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
+
+/** Open a URL in the system default browser. */
+function openInBrowser(url: string): void {
+  const cmd =
+    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+  spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
+}
 
 /** Lines reserved for status bar + divider at top */
 const HEADER_LINES = 2;
@@ -245,6 +253,15 @@ export function App(): JSX.Element {
       return;
     }
 
+    // Open focused PR in browser
+    if (input === 'o') {
+      const prUrl = focusedPr ? prs.get(focusedPr)?.url : undefined;
+      if (prUrl) {
+        openInBrowser(prUrl);
+      }
+      return;
+    }
+
     if (input === 'r') {
       void poll();
     }
@@ -265,9 +282,18 @@ export function App(): JSX.Element {
         return;
       }
 
-      // Left click — only dashboard
-      if (view !== 'dashboard') return;
-      if (event.button === 0 && !event.isRelease) {
+      // Left click
+      if (event.button !== 0 || event.isRelease) return;
+
+      // Detail view: click opens PR in browser
+      if (view === 'detail') {
+        const prUrl = focusedPr ? prs.get(focusedPr)?.url : undefined;
+        if (prUrl) openInBrowser(prUrl);
+        return;
+      }
+
+      // Dashboard: click to select PR
+      if (view === 'dashboard') {
         const sorted = getSortedKeys();
         if (sorted.length === 0) return;
 
@@ -305,6 +331,7 @@ export function App(): JSX.Element {
       getSortedKeys,
       setFocusedPr,
       focusedPr,
+      prs,
       setView,
       stdout,
       detailLineCount,

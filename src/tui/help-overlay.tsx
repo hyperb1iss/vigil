@@ -22,6 +22,7 @@ const HELP_GROUPS: KeyGroup[] = [
       { key: 'Enter', desc: 'Open detail view' },
       { key: 'Esc', desc: 'Go back' },
       { key: 'g / G', desc: 'Jump to top / bottom' },
+      { key: 'o', desc: 'Open PR in browser' },
     ],
   },
   {
@@ -52,6 +53,7 @@ const HELP_GROUPS: KeyGroup[] = [
       { key: 'Shift+Tab', desc: 'Page up' },
       { key: 'g / G', desc: 'Top / bottom' },
       { key: 'a', desc: 'Open action panel' },
+      { key: 'o', desc: 'Open PR in browser' },
     ],
   },
   {
