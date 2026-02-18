@@ -38,6 +38,7 @@ const HELP_GROUPS: KeyGroup[] = [
     color: palette.electricYellow,
     binds: [
       { key: 'v', desc: 'Toggle cards / list' },
+      { key: 's', desc: 'Toggle sort: activity / state' },
       { key: 'y', desc: 'Toggle HITL / YOLO mode' },
       { key: 'r', desc: 'Force poll refresh' },
     ],

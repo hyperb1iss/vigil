@@ -193,13 +193,14 @@ export function Dashboard(): JSX.Element {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
+  const sortMode = useStore(vigilStore, s => s.sortMode);
   const searchQuery = useStore(vigilStore, s => s.searchQuery);
 
   const { stdout } = useStdout();
   const termWidth = stdout.columns ?? 80;
   const termRows = stdout.rows ?? 24;
 
-  // Sort PRs by state priority, then by updatedAt descending
+  // Sort PRs based on active sort mode
   const allSorted = useMemo(
     () =>
       Array.from(prs.values())
@@ -208,11 +209,13 @@ export function Dashboard(): JSX.Element {
           state: prStates.get(pr.key) ?? ('dormant' as PrState),
         }))
         .sort((a, b) => {
-          const pri = statePriority(a.state) - statePriority(b.state);
-          if (pri !== 0) return pri;
+          if (sortMode === 'state') {
+            const pri = statePriority(a.state) - statePriority(b.state);
+            if (pri !== 0) return pri;
+          }
           return new Date(b.pr.updatedAt).getTime() - new Date(a.pr.updatedAt).getTime();
         }),
-    [prs, prStates]
+    [prs, prStates, sortMode]
   );
 
   // Apply search filter

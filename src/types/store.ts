@@ -4,6 +4,7 @@ import type { PrState, PullRequest } from './pr.js';
 
 export type ViewName = 'dashboard' | 'detail' | 'action';
 export type ViewMode = 'cards' | 'list';
+export type SortMode = 'activity' | 'state';
 
 export interface Notification {
   id: string;
@@ -30,6 +31,7 @@ export interface VigilStore {
   mode: 'hitl' | 'yolo';
   view: ViewName;
   viewMode: ViewMode;
+  sortMode: SortMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
@@ -57,6 +59,7 @@ export interface VigilStore {
   // UI actions
   setView: (view: ViewName) => void;
   setViewMode: (viewMode: ViewMode) => void;
+  setSortMode: (sortMode: SortMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   setSearchQuery: (query: string | null) => void;

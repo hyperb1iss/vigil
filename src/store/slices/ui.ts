@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
-import type { Notification, ViewMode, ViewName, VigilStore } from '../../types/store.js';
+import type { Notification, SortMode, ViewMode, ViewName, VigilStore } from '../../types/store.js';
 
 const defaultScrollOffsets: Record<ViewName, number> = {
   dashboard: 0,
@@ -13,6 +13,7 @@ export interface UiSlice {
   mode: 'hitl' | 'yolo';
   view: ViewName;
   viewMode: ViewMode;
+  sortMode: SortMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
@@ -21,6 +22,7 @@ export interface UiSlice {
   config: VigilConfig;
   setView: (view: ViewName) => void;
   setViewMode: (viewMode: ViewMode) => void;
+  setSortMode: (sortMode: SortMode) => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   setSearchQuery: (query: string | null) => void;
@@ -34,6 +36,7 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   mode: 'hitl',
   view: 'dashboard',
   viewMode: 'cards',
+  sortMode: 'activity',
   focusedPr: null,
   selectedAction: 0,
   scrollOffsets: { ...defaultScrollOffsets },
@@ -46,6 +49,12 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   setViewMode: viewMode =>
     set(prev => ({
       viewMode,
+      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+    })),
+
+  setSortMode: sortMode =>
+    set(prev => ({
+      sortMode,
       scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
     })),
 

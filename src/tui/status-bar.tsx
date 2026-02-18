@@ -13,6 +13,7 @@ export function StatusBar(): JSX.Element {
   const prStates = useStore(vigilStore, s => s.prStates);
   const mode = useStore(vigilStore, s => s.mode);
   const viewMode = useStore(vigilStore, s => s.viewMode);
+  const sortMode = useStore(vigilStore, s => s.sortMode);
   const isPolling = useStore(vigilStore, s => s.isPolling);
   const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
 
@@ -42,8 +43,10 @@ export function StatusBar(): JSX.Element {
 
         <Text color={semantic.dim}>{' │ '}</Text>
 
-        {/* View mode */}
+        {/* View mode + sort */}
         <Text color={semantic.muted}>{viewMode === 'cards' ? '▦ Cards' : '☰ List'}</Text>
+        <Text color={semantic.dim}>{' · '}</Text>
+        <Text color={semantic.muted}>{sortMode === 'activity' ? '↕ Activity' : '◆ State'}</Text>
 
         <Text color={semantic.dim}>{' │ '}</Text>
 

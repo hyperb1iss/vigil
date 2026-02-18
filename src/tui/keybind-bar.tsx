@@ -14,6 +14,7 @@ const DASHBOARD_BINDS: Keybind[] = [
   { key: 'Tab', label: 'next' },
   { key: '↵', label: 'detail' },
   { key: '/', label: 'search' },
+  { key: 's', label: 'sort' },
   { key: 'v', label: 'view' },
   { key: 'r', label: 'refresh' },
   { key: '?', label: 'help' },

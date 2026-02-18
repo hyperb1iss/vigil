@@ -32,12 +32,14 @@ export function App(): JSX.Element {
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const sortMode = useStore(vigilStore, s => s.sortMode);
+  const setSortMode = useStore(vigilStore, s => s.setSortMode);
   const searchQuery = useStore(vigilStore, s => s.searchQuery);
   const setSearchQuery = useStore(vigilStore, s => s.setSearchQuery);
   const detailLineCount = useDetailLineCount();
   const [showHelp, setShowHelp] = useState(false);
 
-  /** Get PR keys sorted by state priority + updatedAt. */
+  /** Get PR keys sorted to match dashboard order. */
   const getSortedKeys = useCallback((): string[] => {
     const STATE_ORDER: Record<string, number> = {
       hot: 0,
@@ -49,14 +51,16 @@ export function App(): JSX.Element {
 
     return Array.from(prs.values())
       .sort((a, b) => {
-        const sa = prStates.get(a.key) ?? 'dormant';
-        const sb = prStates.get(b.key) ?? 'dormant';
-        const pri = (STATE_ORDER[sa] ?? 4) - (STATE_ORDER[sb] ?? 4);
-        if (pri !== 0) return pri;
+        if (sortMode === 'state') {
+          const sa = prStates.get(a.key) ?? 'dormant';
+          const sb = prStates.get(b.key) ?? 'dormant';
+          const pri = (STATE_ORDER[sa] ?? 4) - (STATE_ORDER[sb] ?? 4);
+          if (pri !== 0) return pri;
+        }
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       })
       .map(pr => pr.key);
-  }, [prs, prStates]);
+  }, [prs, prStates, sortMode]);
 
   /** Number of card columns based on terminal width. */
   const numCols = viewMode === 'cards' ? ((stdout.columns ?? 120) >= 140 ? 2 : 1) : 1;
@@ -200,6 +204,11 @@ export function App(): JSX.Element {
 
     if (input === 'v' && view === 'dashboard') {
       setViewMode(viewMode === 'cards' ? 'list' : 'cards');
+      return;
+    }
+
+    if (input === 's' && view === 'dashboard') {
+      setSortMode(sortMode === 'activity' ? 'state' : 'activity');
       return;
     }
 
