@@ -5,6 +5,7 @@ import type { JSX } from 'react';
 import { useCallback, useState } from 'react';
 import { useStore } from 'zustand';
 
+import { fetchPrDetail } from './core/github.js';
 import { poll } from './core/poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
@@ -13,6 +14,29 @@ import { HelpOverlay } from './tui/help-overlay.js';
 import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
+
+/** Fetch full PR detail on demand if the store only has search-stub data. */
+async function fetchDetailIfNeeded(key: string): Promise<void> {
+  const pr = vigilStore.getState().prs.get(key);
+  if (!pr || pr.headRefName) return; // already enriched
+
+  const hashIdx = key.indexOf('#');
+  if (hashIdx === -1) return;
+  const nameWithOwner = key.slice(0, hashIdx);
+  const number = Number(key.slice(hashIdx + 1));
+  const slashIdx = nameWithOwner.indexOf('/');
+  if (slashIdx === -1 || Number.isNaN(number)) return;
+
+  const owner = nameWithOwner.slice(0, slashIdx);
+  const repo = nameWithOwner.slice(slashIdx + 1);
+
+  try {
+    const detail = await fetchPrDetail(owner, repo, number);
+    vigilStore.getState().updatePr(key, detail);
+  } catch {
+    // Poller will retry on next cycle
+  }
+}
 
 /** Open a URL in the system default browser. */
 function openInBrowser(url: string): void {
@@ -125,11 +149,16 @@ export function App(): JSX.Element {
   /** Handle Enter key — opens detail from dashboard. */
   function onEnter(): void {
     if (view !== 'dashboard') return;
-    if (!focusedPr) {
+    let prKey = focusedPr;
+    if (!prKey) {
       const sorted = getSortedKeys();
-      if (sorted[0]) setFocusedPr(sorted[0]);
+      prKey = sorted[0] ?? null;
+      if (prKey) setFocusedPr(prKey);
     }
-    if (focusedPr || getSortedKeys().length > 0) setView('detail');
+    if (prKey) {
+      setView('detail');
+      void fetchDetailIfNeeded(prKey);
+    }
   }
 
   /** Handle g/G jump to top/bottom. */

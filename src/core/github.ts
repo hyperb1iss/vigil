@@ -656,6 +656,8 @@ function repoHasChanges(
     const key = `${repo}#${raw.number}`;
     const known = knownPrs.get(key);
     if (!known || known.updatedAt !== raw.updatedAt) return true;
+    // Search stub was never enriched by detail pass — force re-fetch
+    if (!known.headRefName) return true;
   }
   return false;
 }
