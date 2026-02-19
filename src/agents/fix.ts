@@ -11,6 +11,7 @@ import type {
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk';
+
 import { getKnowledgeAsContext } from '../learning/knowledge.js';
 import { vigilStore } from '../store/index.js';
 import type { AgentResult, AgentRun, ProposedAction } from '../types/agents.js';

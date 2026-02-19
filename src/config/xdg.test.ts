@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+
 import { paths, xdgCache, xdgConfig, xdgData } from './xdg.js';
 
 // Save original env values so we can restore after each test

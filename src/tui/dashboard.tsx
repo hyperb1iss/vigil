@@ -3,6 +3,7 @@ import Spinner from 'ink-spinner';
 import type { JSX } from 'react';
 import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
+
 import { vigilStore } from '../store/index.js';
 import type { PrState, PullRequest } from '../types/index.js';
 import { AgentStatus } from './agent-status.js';

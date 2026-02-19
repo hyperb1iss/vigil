@@ -2,6 +2,7 @@ import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useMemo } from 'react';
 import { useStore } from 'zustand';
+
 import { vigilStore } from '../store/index.js';
 import type { PrState, PullRequest } from '../types/index.js';
 import { KeybindBar } from './keybind-bar.js';

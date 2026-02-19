@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+
 import type { AgentRun, CompletedAction, ProposedAction } from '../../types/agents.js';
 import type { VigilStore } from '../../types/store.js';
 

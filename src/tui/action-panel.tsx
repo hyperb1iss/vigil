@@ -1,6 +1,7 @@
 import { Box, Text, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
+
 import { vigilStore } from '../store/index.js';
 import type { CompletedAction, ProposedAction } from '../types/index.js';
 import { KeybindBar } from './keybind-bar.js';

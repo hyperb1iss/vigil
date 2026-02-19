@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import type { JSX } from 'react';
+
 import type { CheckConclusion, PrState, PullRequest, ReviewDecision } from '../types/index.js';
 import {
   checkIndicators,

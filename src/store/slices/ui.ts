@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+
 import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
 import type { Notification, SortMode, ViewMode, ViewName, VigilStore } from '../../types/store.js';

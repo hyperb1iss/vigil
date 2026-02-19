@@ -4,6 +4,7 @@ import { render } from 'ink';
 import React from 'react';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';

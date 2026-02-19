@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
 import type { RepoConfig, VigilConfig } from '../types/index.js';
 import { defaultConfig } from './defaults.js';
 import { paths } from './xdg.js';

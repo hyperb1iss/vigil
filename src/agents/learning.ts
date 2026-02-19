@@ -6,6 +6,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+
 import { appendPattern, bumpConfidence, getKnowledgeAsContext } from '../learning/knowledge.js';
 import { summarizeForLearning } from '../learning/patterns.js';
 import { vigilStore } from '../store/index.js';

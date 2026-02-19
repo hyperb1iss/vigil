@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+
 import { paths } from '../config/xdg.js';
 
 const INITIAL_TEMPLATE = `# Vigil Knowledge

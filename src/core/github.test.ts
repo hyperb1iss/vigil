@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import { _internal, GhAuthError, GhError, GhRateLimitError } from './github.js';
 
 const {

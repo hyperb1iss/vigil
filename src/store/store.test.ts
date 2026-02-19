@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+
 import { createStore } from 'zustand/vanilla';
+
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PullRequest } from '../types/pr.js';
 import type { Notification, VigilStore } from '../types/store.js';

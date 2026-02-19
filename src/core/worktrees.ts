@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+
 import simpleGit from 'simple-git';
+
 import type { PrWorktree } from '../types/pr.js';
 
 const execFileAsync = promisify(execFile);

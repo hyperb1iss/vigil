@@ -1,5 +1,6 @@
 import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
+
 import { palette, semantic } from './theme.js';
 
 // ─── Keybinding Data ──────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
+
 import { vigilStore } from '../store/index.js';
 import type { AgentRun } from '../types/index.js';
 import { icons, palette, semantic, truncate } from './theme.js';

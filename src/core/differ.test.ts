@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+
 import type { PullRequest } from '../types/pr.js';
 import { diffPrs } from './differ.js';
 

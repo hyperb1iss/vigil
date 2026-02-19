@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+
 import type { PrState, PullRequest } from '../../types/pr.js';
 import type { VigilStore } from '../../types/store.js';
 

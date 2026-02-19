@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
+
 import { Box, useApp, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useCallback, useState } from 'react';
 import { useStore } from 'zustand';
+
 import { poll } from './core/poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
@@ -297,18 +299,18 @@ export function App(): JSX.Element {
         const sorted = getSortedKeys();
         if (sorted.length === 0) return;
 
-        const termWidth = stdout.columns ?? 120;
-        const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
+        const cols = numCols;
         const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : LIST_ROW_HEIGHT;
 
         const contentY = event.y - HEADER_LINES;
         if (contentY < 1) return;
 
         const row = Math.floor((contentY - 1) / itemHeight);
-        const col = viewMode === 'cards' ? Math.floor(((event.x - 1) / termWidth) * numCols) : 0;
+        const tw = stdout.columns ?? 120;
+        const col = viewMode === 'cards' ? Math.floor(((event.x - 1) / tw) * cols) : 0;
 
         const scrollOffset = vigilStore.getState().scrollOffsets.dashboard;
-        const idx = (scrollOffset + row) * numCols + col;
+        const idx = (scrollOffset + row) * cols + col;
 
         if (idx >= 0 && idx < sorted.length) {
           const key = sorted[idx];

@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+
 import type { VigilStore } from '../types/store.js';
 import { createAgentSlice } from './slices/agents.js';
 import { createPrSlice } from './slices/prs.js';

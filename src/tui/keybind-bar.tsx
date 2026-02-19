@@ -1,6 +1,7 @@
 import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
+
 import { vigilStore } from '../store/index.js';
 import { palette, semantic } from './theme.js';
 
