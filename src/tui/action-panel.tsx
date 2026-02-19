@@ -116,56 +116,48 @@ function HitlPanel(): JSX.Element {
 
   const pending = actionQueue.filter(a => a.status === 'pending');
 
+  /** Navigate action selection by delta, auto-scrolling if needed. */
+  function navigateAction(delta: number): void {
+    const next =
+      delta > 0
+        ? Math.min(selectedAction + 1, Math.max(0, pending.length - 1))
+        : Math.max(0, selectedAction - 1);
+    vigilStore.setState({ selectedAction: next });
+
+    const availableHeight = Math.max(1, termRows - CHROME_LINES);
+    const visibleActions = Math.floor(availableHeight / ACTION_ROW_HEIGHT);
+    if (next >= scrollOffset + visibleActions) {
+      scrollView('action', 1, pending.length);
+    } else if (next < scrollOffset) {
+      scrollView('action', -1, pending.length);
+    }
+  }
+
   useInput((input, key) => {
-    // Number keys: approve specific action
     const num = Number.parseInt(input, 10);
     if (num >= 1 && num <= 9) {
       const action = pending[num - 1];
-      if (action) {
-        approveAction(action.id);
-      }
+      if (action) approveAction(action.id);
       return;
     }
 
-    // Approve all
     if (input === 'a') {
-      for (const action of pending) {
-        approveAction(action.id);
-      }
+      for (const action of pending) approveAction(action.id);
       return;
     }
 
-    // Skip (reject) selected
     if (input === 'n') {
       const action = pending[selectedAction];
-      if (action) {
-        rejectAction(action.id);
-      }
+      if (action) rejectAction(action.id);
       return;
     }
 
-    // j/k navigation
     if (input === 'j' || key.downArrow) {
-      const next = Math.min(selectedAction + 1, Math.max(0, pending.length - 1));
-      vigilStore.setState({ selectedAction: next });
-
-      // Auto-scroll if selected goes below visible
-      const availableHeight = Math.max(1, termRows - CHROME_LINES);
-      const visibleActions = Math.floor(availableHeight / ACTION_ROW_HEIGHT);
-      if (next >= scrollOffset + visibleActions) {
-        scrollView('action', 1, pending.length);
-      }
+      navigateAction(1);
       return;
     }
-
     if (input === 'k' || key.upArrow) {
-      const next = Math.max(0, selectedAction - 1);
-      vigilStore.setState({ selectedAction: next });
-
-      // Auto-scroll if selected goes above visible
-      if (next < scrollOffset) {
-        scrollView('action', -1, pending.length);
-      }
+      navigateAction(-1);
     }
   });
 

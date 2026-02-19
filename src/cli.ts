@@ -32,25 +32,13 @@ function eventToNotification(event: PrEvent): Notification | null {
 
   switch (event.type) {
     case 'checks_changed':
-      if (
-        event.data?.type === 'checks_changed' &&
-        event.data.checks.some(c => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED')
-      ) {
-        return { ...base, message: `CI failed on ${event.prKey}`, priority: 'high' };
-      }
-      return null;
+      return isFailedChecksEvent(event)
+        ? { ...base, message: `CI failed on ${event.prKey}`, priority: 'high' }
+        : null;
     case 'review_submitted':
-      if (
-        event.data?.type === 'review_submitted' &&
-        event.data.review.state === 'CHANGES_REQUESTED'
-      ) {
-        return {
-          ...base,
-          message: `Changes requested on ${event.prKey}`,
-          priority: 'high',
-        };
-      }
-      return null;
+      return isChangesRequestedEvent(event)
+        ? { ...base, message: `Changes requested on ${event.prKey}`, priority: 'high' }
+        : null;
     case 'conflict_detected':
       return { ...base, message: `Conflict on ${event.prKey}`, priority: 'high' };
     case 'ready_to_merge':
@@ -59,6 +47,71 @@ function eventToNotification(event: PrEvent): Notification | null {
       return { ...base, message: `New comment on ${event.prKey}`, priority: 'low' };
     default:
       return null;
+  }
+}
+
+function isFailedChecksEvent(event: PrEvent): boolean {
+  return (
+    event.data?.type === 'checks_changed' &&
+    event.data.checks.some(c => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED')
+  );
+}
+
+function isChangesRequestedEvent(event: PrEvent): boolean {
+  return event.data?.type === 'review_submitted' && event.data.review.state === 'CHANGES_REQUESTED';
+}
+
+/** Check notification config flags for a given event type. */
+function isEventNotificationEnabled(
+  eventType: string,
+  notifConfig: {
+    onCiFailure: boolean;
+    onBlockingReview: boolean;
+    onReadyToMerge: boolean;
+    onNewComment: boolean;
+  }
+): boolean {
+  switch (eventType) {
+    case 'checks_changed':
+      return notifConfig.onCiFailure;
+    case 'review_submitted':
+      return notifConfig.onBlockingReview;
+    case 'ready_to_merge':
+      return notifConfig.onReadyToMerge;
+    case 'comment_added':
+      return notifConfig.onNewComment;
+    default:
+      return true;
+  }
+}
+
+/** Process events and dispatch desktop notifications. */
+function dispatchNotifications(
+  events: PrEvent[],
+  store: ReturnType<typeof vigilStore.getState>,
+  notifConfig: {
+    onCiFailure: boolean;
+    onBlockingReview: boolean;
+    onReadyToMerge: boolean;
+    onNewComment: boolean;
+  }
+): void {
+  for (const event of events) {
+    const notification = eventToNotification(event);
+    if (!notification) continue;
+    if (!isEventNotificationEnabled(event.type, notifConfig)) continue;
+
+    store.addNotification(notification);
+
+    if (shouldNotifyDesktop(notification)) {
+      void sendDesktopNotification(
+        'Vigil',
+        notification.message,
+        event.prKey,
+        shouldPlaySound(notification),
+        event.pr.url
+      );
+    }
   }
 }
 
@@ -131,28 +184,7 @@ async function main(): Promise<void> {
     // Send desktop notifications (skip initial load to avoid blast)
     const notifConfig = config.notifications;
     if (notifConfig.enabled && !skipNotifs) {
-      for (const event of events) {
-        const notification = eventToNotification(event);
-        if (!notification) continue;
-
-        // Check config flags
-        if (event.type === 'checks_changed' && !notifConfig.onCiFailure) continue;
-        if (event.type === 'review_submitted' && !notifConfig.onBlockingReview) continue;
-        if (event.type === 'ready_to_merge' && !notifConfig.onReadyToMerge) continue;
-        if (event.type === 'comment_added' && !notifConfig.onNewComment) continue;
-
-        store.addNotification(notification);
-
-        if (shouldNotifyDesktop(notification)) {
-          void sendDesktopNotification(
-            'Vigil',
-            notification.message,
-            event.prKey,
-            shouldPlaySound(notification),
-            event.pr.url
-          );
-        }
-      }
+      dispatchNotifications(events, store, notifConfig);
     }
 
     // Route to agent orchestrator (unless --no-agents)

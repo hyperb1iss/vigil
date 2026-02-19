@@ -231,6 +231,71 @@ function buildConflictCard(pr: PullRequest, w: number): ContentLine[] {
 
 // ─── Section: Reviews ────────────────────────────────────────────────
 
+/** Get color, symbol, and label for a review state. */
+function reviewStateStyle(state: string): { color: string; symbol: string; label: string } {
+  switch (state) {
+    case 'APPROVED':
+      return { color: semantic.success, symbol: checkIndicators.passing.symbol, label: 'approved' };
+    case 'CHANGES_REQUESTED':
+      return {
+        color: semantic.error,
+        symbol: checkIndicators.failing.symbol,
+        label: 'changes requested',
+      };
+    default:
+      return {
+        color: semantic.muted,
+        symbol: checkIndicators.pending.symbol,
+        label: state.toLowerCase(),
+      };
+  }
+}
+
+/** Build content lines for a single review entry. */
+function buildSingleReviewLines(
+  review: PullRequest['reviews'][number],
+  w: number,
+  c: string
+): ContentLine[] {
+  const { color, symbol, label } = reviewStateStyle(review.state);
+  const lines: ContentLine[] = [
+    spacedCardRow(
+      `review-${review.id}`,
+      <Text>
+        <Text color={color}>{symbol} </Text>
+        <Text color={palette.neonCyan} bold>
+          {review.author.login}
+        </Text>
+        <Text color={semantic.dim}>{` ${label}`}</Text>
+      </Text>,
+      <Text color={semantic.timestamp} dimColor>
+        {timeAgo(review.submittedAt)}
+      </Text>,
+      w,
+      c
+    ),
+  ];
+
+  if (review.body.trim().length > 0) {
+    const stripped = stripMarkup(review.body);
+    const firstLine = stripped.split('\n').find(l => l.trim().length > 0);
+    if (firstLine) {
+      lines.push(
+        cardRow(
+          `review-body-${review.id}`,
+          <Text color={semantic.dim} wrap="truncate-end">
+            {`  \u201C${truncate(firstLine, w - 14)}\u201D`}
+          </Text>,
+          w,
+          c
+        )
+      );
+    }
+  }
+
+  return lines;
+}
+
 function buildReviewsCard(pr: PullRequest, w: number): ContentLine[] {
   const c = palette.electricPurple;
   const lines: ContentLine[] = [];
@@ -257,55 +322,7 @@ function buildReviewsCard(pr: PullRequest, w: number): ContentLine[] {
     );
   } else {
     for (const review of pr.reviews) {
-      const rc =
-        review.state === 'APPROVED'
-          ? semantic.success
-          : review.state === 'CHANGES_REQUESTED'
-            ? semantic.error
-            : semantic.muted;
-      const sym =
-        review.state === 'APPROVED'
-          ? checkIndicators.passing.symbol
-          : review.state === 'CHANGES_REQUESTED'
-            ? checkIndicators.failing.symbol
-            : checkIndicators.pending.symbol;
-      const label =
-        review.state === 'CHANGES_REQUESTED' ? 'changes requested' : review.state.toLowerCase();
-
-      lines.push(
-        spacedCardRow(
-          `review-${review.id}`,
-          <Text>
-            <Text color={rc}>{sym} </Text>
-            <Text color={palette.neonCyan} bold>
-              {review.author.login}
-            </Text>
-            <Text color={semantic.dim}>{` ${label}`}</Text>
-          </Text>,
-          <Text color={semantic.timestamp} dimColor>
-            {timeAgo(review.submittedAt)}
-          </Text>,
-          w,
-          c
-        )
-      );
-
-      if (review.body.trim().length > 0) {
-        const stripped = stripMarkup(review.body);
-        const firstLine = stripped.split('\n').find(l => l.trim().length > 0);
-        if (firstLine) {
-          lines.push(
-            cardRow(
-              `review-body-${review.id}`,
-              <Text color={semantic.dim} wrap="truncate-end">
-                {`  \u201C${truncate(firstLine, w - 14)}\u201D`}
-              </Text>,
-              w,
-              c
-            )
-          );
-        }
-      }
+      lines.push(...buildSingleReviewLines(review, w, c));
     }
   }
 
@@ -314,6 +331,98 @@ function buildReviewsCard(pr: PullRequest, w: number): ContentLine[] {
 }
 
 // ─── Section: CI Checks ──────────────────────────────────────────────
+
+/** Build a single check row with the given indicator style. */
+function buildCheckRow(
+  prefix: string,
+  check: PullRequest['checks'][number],
+  indicator: { color: string; symbol: string },
+  statusText: JSX.Element,
+  w: number,
+  c: string,
+  nameStyle?: string
+): ContentLine {
+  return spacedCardRow(
+    `ci-${prefix}-${check.name}`,
+    <Text>
+      <Text color={indicator.color}>{`${indicator.symbol} `}</Text>
+      <Text color={nameStyle ?? palette.fg} bold={prefix === 'fail'}>
+        {truncate(check.name, w - 20)}
+      </Text>
+    </Text>,
+    statusText,
+    w,
+    c
+  );
+}
+
+/** Build CI progress bar as a content line. */
+function buildCIProgressBar(
+  passing: number,
+  failing: number,
+  running: number,
+  total: number,
+  w: number,
+  c: string
+): ContentLine {
+  const barWidth = Math.min(w - 8, 40);
+  const passN = Math.round((passing / total) * barWidth);
+  const failN = Math.round((failing / total) * barWidth);
+  const runN = running > 0 ? Math.max(1, Math.round((running / total) * barWidth)) : 0;
+  const emptyN = Math.max(0, barWidth - passN - failN - runN);
+
+  return cardRow(
+    'ci-bar',
+    <Text>
+      {passN > 0 && <Text color={semantic.success}>{'\u2588'.repeat(passN)}</Text>}
+      {failN > 0 && <Text color={semantic.error}>{'\u2588'.repeat(failN)}</Text>}
+      {runN > 0 && <Text color={semantic.warning}>{'\u2588'.repeat(runN)}</Text>}
+      {emptyN > 0 && <Text color={semantic.dim}>{'\u2591'.repeat(emptyN)}</Text>}
+    </Text>,
+    w,
+    c
+  );
+}
+
+/** Build passing check rows, collapsing if there are many. */
+function buildPassingCheckRows(
+  passing: PullRequest['checks'],
+  w: number,
+  c: string
+): ContentLine[] {
+  const lines: ContentLine[] = [];
+  const indicator = checkIndicators.passing;
+  const statusEl = (
+    <Text color={semantic.success} dimColor>
+      success
+    </Text>
+  );
+
+  if (passing.length <= MAX_INLINE_PASSING) {
+    for (const check of passing) {
+      lines.push(buildCheckRow('pass', check, indicator, statusEl, w, c, semantic.muted));
+    }
+  } else {
+    for (let i = 0; i < 3; i++) {
+      const check = passing[i];
+      if (!check) break;
+      lines.push(buildCheckRow('pass', check, indicator, statusEl, w, c, semantic.muted));
+    }
+    const rest = passing.length - 3;
+    lines.push(
+      cardRow(
+        'ci-pass-more',
+        <Text color={semantic.success} dimColor>
+          {`${indicator.symbol} ${icons.ellipsis} and ${rest} more passing`}
+        </Text>,
+        w,
+        c
+      )
+    );
+  }
+
+  return lines;
+}
 
 function buildCICard(pr: PullRequest, w: number): ContentLine[] {
   const total = pr.checks.length;
@@ -346,41 +455,14 @@ function buildCICard(pr: PullRequest, w: number): ContentLine[] {
       )
     );
   } else {
-    // Progress bar
-    const barWidth = Math.min(w - 8, 40);
-    const passN = Math.round((passing.length / total) * barWidth);
-    const failN = Math.round((failing.length / total) * barWidth);
-    const runN =
-      running.length > 0 ? Math.max(1, Math.round((running.length / total) * barWidth)) : 0;
-    const emptyN = Math.max(0, barWidth - passN - failN - runN);
+    lines.push(buildCIProgressBar(passing.length, failing.length, running.length, total, w, c));
 
-    lines.push(
-      cardRow(
-        'ci-bar',
-        <Text>
-          {passN > 0 && <Text color={semantic.success}>{'\u2588'.repeat(passN)}</Text>}
-          {failN > 0 && <Text color={semantic.error}>{'\u2588'.repeat(failN)}</Text>}
-          {runN > 0 && <Text color={semantic.warning}>{'\u2588'.repeat(runN)}</Text>}
-          {emptyN > 0 && <Text color={semantic.dim}>{'\u2591'.repeat(emptyN)}</Text>}
-        </Text>,
-        w,
-        c
-      )
-    );
-
-    // Failing checks (always shown)
     for (const check of failing) {
       lines.push(
-        spacedCardRow(
-          `ci-fail-${check.name}`,
-          <Text>
-            <Text color={checkIndicators.failing.color}>
-              {`${checkIndicators.failing.symbol} `}
-            </Text>
-            <Text color={palette.fg} bold>
-              {truncate(check.name, w - 20)}
-            </Text>
-          </Text>,
+        buildCheckRow(
+          'fail',
+          check,
+          checkIndicators.failing,
           <Text color={semantic.error} bold>
             FAILURE
           </Text>,
@@ -390,26 +472,20 @@ function buildCICard(pr: PullRequest, w: number): ContentLine[] {
       );
     }
 
-    // Running checks (always shown)
     for (const check of running) {
-      const statusLabel = check.status === 'IN_PROGRESS' ? 'running' : check.status.toLowerCase();
+      const label = check.status === 'IN_PROGRESS' ? 'running' : check.status.toLowerCase();
       lines.push(
-        spacedCardRow(
-          `ci-run-${check.name}`,
-          <Text>
-            <Text color={checkIndicators.pending.color}>
-              {`${checkIndicators.pending.symbol} `}
-            </Text>
-            <Text color={palette.fg}>{truncate(check.name, w - 20)}</Text>
-          </Text>,
-          <Text color={semantic.warning}>{statusLabel}</Text>,
+        buildCheckRow(
+          'run',
+          check,
+          checkIndicators.pending,
+          <Text color={semantic.warning}>{label}</Text>,
           w,
           c
         )
       );
     }
 
-    // Cancelled checks
     for (const check of cancelled) {
       lines.push(
         spacedCardRow(
@@ -425,59 +501,7 @@ function buildCICard(pr: PullRequest, w: number): ContentLine[] {
       );
     }
 
-    // Passing checks — show individually if few, collapse if many
-    if (passing.length <= MAX_INLINE_PASSING) {
-      for (const check of passing) {
-        lines.push(
-          spacedCardRow(
-            `ci-pass-${check.name}`,
-            <Text>
-              <Text color={checkIndicators.passing.color}>
-                {`${checkIndicators.passing.symbol} `}
-              </Text>
-              <Text color={semantic.muted}>{truncate(check.name, w - 20)}</Text>
-            </Text>,
-            <Text color={semantic.success} dimColor>
-              success
-            </Text>,
-            w,
-            c
-          )
-        );
-      }
-    } else {
-      for (let i = 0; i < 3; i++) {
-        const check = passing[i];
-        if (!check) break;
-        lines.push(
-          spacedCardRow(
-            `ci-pass-${check.name}`,
-            <Text>
-              <Text color={checkIndicators.passing.color}>
-                {`${checkIndicators.passing.symbol} `}
-              </Text>
-              <Text color={semantic.muted}>{truncate(check.name, w - 20)}</Text>
-            </Text>,
-            <Text color={semantic.success} dimColor>
-              success
-            </Text>,
-            w,
-            c
-          )
-        );
-      }
-      const rest = passing.length - 3;
-      lines.push(
-        cardRow(
-          'ci-pass-more',
-          <Text color={semantic.success} dimColor>
-            {`${checkIndicators.passing.symbol} ${icons.ellipsis} and ${rest} more passing`}
-          </Text>,
-          w,
-          c
-        )
-      );
-    }
+    lines.push(...buildPassingCheckRows(passing, w, c));
   }
 
   lines.push(cardBottom('ci-bottom', w, c));

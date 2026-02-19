@@ -491,37 +491,7 @@ export async function fetchMyOpenPrs(
   }
 
   // Short-circuit: only fetch detail for repos with changed PRs
-  const staleRepos = new Set<string>();
-  if (knownPrs && knownPrs.size > 0) {
-    for (const repo of repoSet) {
-      // Check if any PR in this repo has a different updatedAt
-      let hasChange = false;
-      for (const raw of searchResults) {
-        if (raw.repository.nameWithOwner !== repo) continue;
-        const key = `${repo}#${raw.number}`;
-        const known = knownPrs.get(key);
-        if (!known || known.updatedAt !== raw.updatedAt) {
-          hasChange = true;
-          break;
-        }
-      }
-      if (hasChange) {
-        staleRepos.add(repo);
-      } else {
-        // Carry forward existing data for unchanged repos
-        for (const [key, pr] of knownPrs) {
-          if (key.startsWith(`${repo}#`)) {
-            prMap.set(key, pr);
-          }
-        }
-      }
-    }
-  } else {
-    // No known PRs — fetch everything
-    for (const repo of repoSet) {
-      staleRepos.add(repo);
-    }
-  }
+  const staleRepos = findStaleRepos(repoSet, searchResults, knownPrs, prMap);
 
   // Pass 2: Fetch full detail only for stale repos
   const detailPromises = [...staleRepos].map(async nameWithOwner => {
@@ -546,11 +516,7 @@ export async function fetchMyOpenPrs(
     } catch {
       // If detail fetch fails, carry forward known data to prevent state degradation
       if (knownPrs) {
-        for (const [key, pr] of knownPrs) {
-          if (key.startsWith(`${nameWithOwner}#`)) {
-            prMap.set(key, pr);
-          }
-        }
+        carryForwardKnown(nameWithOwner, knownPrs, prMap);
       }
     }
   });
@@ -653,6 +619,59 @@ function extractApiPath(url: string): string {
 
   // Last resort: pass through and let gh figure it out
   return url;
+}
+
+// ─── Stale Repo Detection ────────────────────────────────────────────────────
+
+/** Determine which repos need a detail fetch by comparing updatedAt timestamps. */
+function findStaleRepos(
+  repoSet: Set<string>,
+  searchResults: GhSearchPr[],
+  knownPrs: Map<string, PullRequest> | undefined,
+  prMap: Map<string, PullRequest>
+): Set<string> {
+  if (!knownPrs || knownPrs.size === 0) {
+    return new Set(repoSet);
+  }
+
+  const stale = new Set<string>();
+  for (const repo of repoSet) {
+    if (repoHasChanges(repo, searchResults, knownPrs)) {
+      stale.add(repo);
+    } else {
+      carryForwardKnown(repo, knownPrs, prMap);
+    }
+  }
+  return stale;
+}
+
+/** Check if any PR in this repo has a different updatedAt than what we know. */
+function repoHasChanges(
+  repo: string,
+  searchResults: GhSearchPr[],
+  knownPrs: Map<string, PullRequest>
+): boolean {
+  for (const raw of searchResults) {
+    if (raw.repository.nameWithOwner !== repo) continue;
+    const key = `${repo}#${raw.number}`;
+    const known = knownPrs.get(key);
+    if (!known || known.updatedAt !== raw.updatedAt) return true;
+  }
+  return false;
+}
+
+/** Copy existing data from knownPrs into prMap for a given repo. */
+function carryForwardKnown(
+  repo: string,
+  knownPrs: Map<string, PullRequest>,
+  prMap: Map<string, PullRequest>
+): void {
+  const prefix = `${repo}#`;
+  for (const [key, pr] of knownPrs) {
+    if (key.startsWith(prefix)) {
+      prMap.set(key, pr);
+    }
+  }
 }
 
 // ─── Test Exports ────────────────────────────────────────────────────────────
