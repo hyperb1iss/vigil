@@ -45,6 +45,10 @@
     "ai",
     "agent"
   ],
+  "bugs": {
+    "url": "https://github.com/hyperb1iss/vigil/issues"
+  },
+  "homepage": "https://github.com/hyperb1iss/vigil#readme",
   "engines": {
     "bun": ">=1.1.0"
   },

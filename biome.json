@@ -1,5 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.2/schema.json",
+  "root": true,
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "defaultBranch": "main"
+  },
   "files": {
     "includes": ["src/**", "*.json", "*.ts"],
     "ignoreUnknown": true
@@ -7,12 +14,26 @@
   "assist": {
     "actions": {
       "source": {
-        "organizeImports": "on"
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              [":BUN:", ":NODE:"],
+              ":BLANK_LINE:",
+              ":PACKAGE:",
+              ":BLANK_LINE:",
+              [":ALIAS:", ":PATH:"]
+            ]
+          }
+        }
       }
     }
   },
   "linter": {
     "enabled": true,
+    "domains": {
+      "types": "recommended"
+    },
     "rules": {
       "recommended": true,
       "performance": {
@@ -23,7 +44,11 @@
       "complexity": {
         "noBannedTypes": "error",
         "noUselessTypeConstraint": "error",
-        "noExcessiveCognitiveComplexity": "off"
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": { "maxAllowedComplexity": 25 }
+        },
+        "noUselessUndefined": "warn"
       },
       "correctness": {
         "noUnusedVariables": "error",
@@ -58,15 +83,19 @@
         "noEmptyBlockStatements": "warn",
         "noMisleadingInstantiator": "error",
         "noUnsafeDeclarationMerging": "error",
+        "noImportCycles": "error",
         "useAwait": "off"
       },
       "security": {
         "noDangerouslySetInnerHtml": "error"
       },
       "nursery": {
-        "noFloatingPromises": "error",
-        "noMisusedPromises": "error",
-        "noShadow": "off"
+        "noShadow": "warn",
+        "noNestedPromises": "warn",
+        "noMultiAssign": "error",
+        "noReturnAssign": "error",
+        "noUselessReturn": "warn",
+        "useErrorCause": "warn"
       }
     }
   },
@@ -74,14 +103,16 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 100
+    "lineWidth": 100,
+    "lineEnding": "lf"
   },
   "javascript": {
     "globals": ["Bun"],
     "formatter": {
       "quoteStyle": "single",
       "trailingCommas": "es5",
-      "arrowParentheses": "asNeeded"
+      "arrowParentheses": "asNeeded",
+      "semicolons": "always"
     }
   }
 }
