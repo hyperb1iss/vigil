@@ -54,22 +54,22 @@ function EmptyState(): JSX.Element {
     <Box flexDirection="column" alignItems="center" paddingY={2}>
       {/* Branded ASCII mark */}
       <Text color={palette.electricPurple} bold>
-        {'  \u2588\u2588\u2588\u2588\u2588\u2588\u2557'}
+        {'██╗   ██╗'}
       </Text>
       <Text color={palette.electricPurple} bold>
-        {'  \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D'}
+        {'██║   ██║'}
       </Text>
       <Text color={palette.electricPurple} bold>
-        {'  \u2588\u2588\u2588\u2588\u2588\u2557 '}
+        {'╚██╗ ██╔╝'}
       </Text>
       <Text color={palette.electricPurple} bold>
-        {'  \u255A\u2550\u2550\u2550\u2588\u2588\u2551'}
+        {' ╚████╔╝ '}
       </Text>
       <Text color={palette.electricPurple} bold>
-        {'  \u2588\u2588\u2588\u2588\u2588\u2588\u2551'}
+        {'  ╚██╔╝  '}
       </Text>
       <Text color={palette.electricPurple} bold>
-        {'  \u255A\u2550\u2550\u2550\u2550\u2550\u255D'}
+        {'   ╚═╝   '}
       </Text>
 
       <Text> </Text>

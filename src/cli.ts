@@ -121,11 +121,15 @@ async function main(): Promise<void> {
     seedMockData(vigilStore);
   }
 
-  // Wire up events
+  // Wire up events — skip notifications on the first poll (initial load)
+  let isFirstPoll = true;
   const onEvents = async (events: PrEvent[]): Promise<void> => {
-    // Send desktop notifications
+    const skipNotifs = isFirstPoll;
+    isFirstPoll = false;
+
+    // Send desktop notifications (skip initial load to avoid blast)
     const notifConfig = config.notifications;
-    if (notifConfig.enabled) {
+    if (notifConfig.enabled && !skipNotifs) {
       for (const event of events) {
         const notification = eventToNotification(event);
         if (!notification) continue;
@@ -143,7 +147,8 @@ async function main(): Promise<void> {
             'Vigil',
             notification.message,
             event.prKey,
-            shouldPlaySound(notification)
+            shouldPlaySound(notification),
+            event.pr.url
           );
         }
       }
