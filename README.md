@@ -1,8 +1,10 @@
 <div align="center">
 
-# Vigil
+# ⚡ Vigil
 
-**AI-powered PR lifecycle management for the terminal**
+**AI-Powered PR Lifecycle Management for the Terminal**
+
+<sub>✦ Push code. Vigil handles the rest. ✦</sub>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-e135ff?style=for-the-badge&logo=apache&logoColor=white)](https://opensource.org/licenses/Apache-2.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-80ffea?style=for-the-badge&logo=typescript&logoColor=black)](https://www.typescriptlang.org/)
@@ -11,84 +13,84 @@
 [![Ink](https://img.shields.io/badge/Ink_6-React_19-80ffea?style=for-the-badge&logo=react&logoColor=black)](https://github.com/vadimdemedes/ink)
 [![ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff6ac1?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/hyperb1iss)
 
-`>` _Push code. Vigil handles the rest._ `<`
-
-[Overview](#-overview) · [Agents](#-agents) · [Installation](#-installation) · [Quick Start](#-quick-start) · [Modes](#-modes) · [Configuration](#-configuration) · [Contributing](#-contributing)
+[Overview](#-overview) · [Features](#-what-you-get) · [Agents](#-agents) · [Installation](#-installation) · [Dashboard](#-the-dashboard) · [Modes](#-modes) · [Configuration](#-configuration) · [Contributing](#-contributing)
 
 </div>
 
 ---
 
-## Overview
+## 🔮 Overview
 
-The PR lifecycle is one of the most interrupt-driven parts of software engineering. Push code, wait for CI, read reviews, fix nits, push again, update descriptions, fill in verification evidence, respond to comments, request re-review. Repeat.
+The PR lifecycle is one of the most interrupt-driven parts of software engineering. Push code, wait for CI, read reviews, fix nits, push again, update descriptions, fill in verification evidence, respond to comments, request re-review. _Repeat._
 
-**Vigil watches your pull requests so you don't have to.** It monitors all your open PRs across every repo, classifies their state in real-time, and dispatches AI agents to handle the mechanical work — fixing review feedback, rebasing branches, responding to comments, and filling in evidence templates. You stay focused on building. Vigil handles the grind.
+**Vigil watches your pull requests so you don't have to.**
 
-### How It Works
+It monitors all your open PRs across every repo, classifies their state in real-time, and dispatches AI agents to handle the mechanical work — fixing review feedback, rebasing branches, responding to comments, and filling in evidence templates. You stay focused on building. Vigil handles the grind.
 
 ```
 Push code
   → Vigil detects new/updated PR
   → Triage reads ALL signals (CI, reviews, conflicts, templates)
   → Agents dispatch IN PARALLEL
-    ├── Fix Agent patches code
-    ├── Respond Agent replies to reviewers
-    ├── Evidence Agent fills verification sections
+    ├── 🔧 Fix Agent patches code
+    ├── 💬 Respond Agent replies to reviewers
+    ├── 📋 Evidence Agent fills verification sections
   → Fix pushes commit → triggers new CI
   → Loop continues until PR reaches READY state
   → You merge. Learning Agent captures patterns.
   → Next PR. Smarter this time.
 ```
 
-## PR State Machine
+## ✦ What You Get
+
+| Capability | What It Means |
+|---|---|
+| 🔴 **Real-Time State Machine** | Every PR classified into 5 states — hot, waiting, ready, dormant, blocked — updated live as signals change |
+| 🤖 **6 Specialized Agents** | Triage, Fix, Respond, Rebase, Evidence, Learning — each tuned for one job, running in-process via Claude SDK |
+| 🎯 **HITL + YOLO Modes** | Approve every action, or let confident ones auto-execute. Toggle with `y` at any time |
+| 🖥️ **Gorgeous TUI** | Card-based dashboard, detail view with scrolling, action panel — built with Ink 6 + React 19 |
+| 🔔 **Desktop Notifications** | CI failures, blocking reviews, merge conflicts — lightweight alerts that open the PR on click |
+| 🧠 **Learning System** | Captures patterns from every merge — reviewer tendencies, common fixes, response templates |
+| 🔍 **Fuzzy Search** | Filter PRs instantly with `/` — searches titles, repos, branches, authors |
+| 🌊 **Smart Polling** | Two-pass GitHub fetch with `updatedAt` short-circuit — only fetches detail for repos that actually changed |
+
+## 🚦 PR State Machine
 
 Every PR is classified into one of five states based on real-time GitHub signals:
 
 | State | Indicator | Meaning | Signals |
 |-------|-----------|---------|---------|
-| **Hot** | :red_circle: | Needs attention now | Failing CI, blocking reviews, merge conflicts |
-| **Waiting** | :yellow_circle: | Ball is elsewhere | Reviews pending, CI running, awaiting dependencies |
-| **Ready** | :green_circle: | Green light to merge | All checks pass, approved, no conflicts |
-| **Dormant** | :white_circle: | Stale | No activity 48h+, stale reviews |
-| **Blocked** | :purple_circle: | Can't proceed | Draft, depends on another PR, policy block |
+| **Hot** | 🔴 | Needs attention now | Failing CI, blocking reviews, merge conflicts |
+| **Waiting** | 🟡 | Ball is elsewhere | Reviews pending, CI running, awaiting dependencies |
+| **Ready** | 🟢 | Green light to merge | All checks pass, approved, no conflicts |
+| **Dormant** | ⚪ | Stale | No activity 48h+, stale reviews |
+| **Blocked** | 🟣 | Can't proceed | Draft, depends on another PR, policy block |
 
 State transitions happen automatically as signals change. The dashboard re-renders in real-time.
 
-## Agents
+## 🤖 Agents
 
 Six specialized AI agents, each tuned for a specific part of the PR lifecycle:
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
-| **Triage** | Haiku | First responder — classifies events, routes to action agents |
-| **Fix** | Sonnet | Applies code changes for review feedback and CI failures |
-| **Respond** | Sonnet | Drafts contextual replies, pushes back on scope creep |
-| **Rebase** | Sonnet | Rebases branches, resolves merge conflicts intelligently |
-| **Evidence** | Haiku | Fills verification and regression evidence in PR templates |
-| **Learning** | Haiku | Captures patterns post-merge to improve future decisions |
+| 🔍 **Triage** | Haiku | First responder — classifies events, routes to action agents |
+| 🔧 **Fix** | Sonnet | Applies code changes for review feedback and CI failures |
+| 💬 **Respond** | Sonnet | Drafts contextual replies, pushes back on scope creep |
+| 🔀 **Rebase** | Sonnet | Rebases branches, resolves merge conflicts intelligently |
+| 📋 **Evidence** | Haiku | Fills verification and regression evidence in PR templates |
+| 🧠 **Learning** | Haiku | Captures patterns post-merge to improve future decisions |
 
 Agents run **in-process** via the Claude Agent SDK — no subprocesses, no external services. All git operations are scoped to worktrees for safety.
 
-## Modes
-
-### HITL (Human-in-the-Loop)
-
-The default. Every agent action is proposed first, displayed in the action panel, and executed only when you approve with a keypress. Safe, controlled, fully transparent.
-
-### YOLO
-
-For the bold. Confident actions auto-execute. Uncertain actions still pause for approval. Destructive operations (`force push`, `merge`, `close`, `delete branch`) **always** require human confirmation, even in YOLO mode.
-
-Toggle between modes with `y` at any time.
-
-## Installation
+## 📦 Installation
 
 ### Prerequisites
 
 - [Bun](https://bun.sh) >= 1.1.0
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated
 - `ANTHROPIC_API_KEY` environment variable set
+- _(Optional)_ `terminal-notifier` for click-to-open desktop notifications on macOS
 
 ### From Source
 
@@ -100,7 +102,7 @@ bun run build
 bun run link  # Symlinks to ~/.local/bin/vigil
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 # Watch all your open PRs across every repo
@@ -115,24 +117,29 @@ vigil --mode yolo
 
 # Dashboard only, no agent actions
 vigil --no-agents
+
+# Visual testing with mock data
+vigil --demo
 ```
 
-## The Dashboard
+## 🖥️ The Dashboard
 
 Vigil's terminal interface is built with [Ink](https://github.com/vadimdemedes/ink) and the **SilkCircuit Neon** design language.
 
-### Navigation
+### ⌨️ Navigation
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` `←` `→` | Navigate PRs |
+| `↑` `↓` `←` `→` / `h` `j` `k` `l` | Navigate PRs |
 | `Tab` / `Shift+Tab` | Next / previous PR |
 | `Enter` | Open detail view |
 | `Esc` | Go back |
 | `/` | Fuzzy search |
 | `g` / `G` | Jump to top / bottom |
+| `o` | Open PR in browser |
+| `q` | Quit |
 
-### Views & Modes
+### 🎨 Views & Modes
 
 | Key | Action |
 |-----|--------|
@@ -141,17 +148,18 @@ Vigil's terminal interface is built with [Ink](https://github.com/vadimdemedes/i
 | `y` | Toggle HITL / YOLO mode |
 | `r` | Force poll refresh |
 | `?` | Full keybinding reference |
-| `q` | Quit |
 
-### Detail View
+### 📋 Detail View
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Scroll content |
+| `↑` `↓` / `j` `k` | Scroll content |
 | `Tab` / `Shift+Tab` | Page down / up |
 | `a` | Open action panel |
+| `o` | Open PR in browser |
+| _click_ | Open PR in browser |
 
-### Action Panel
+### ⚡ Action Panel
 
 | Key | Action |
 |-----|--------|
@@ -159,61 +167,96 @@ Vigil's terminal interface is built with [Ink](https://github.com/vadimdemedes/i
 | `a` | Approve all |
 | `n` | Skip action |
 
-Vim motions (`h` `j` `k` `l`) work everywhere for power users.
+## 🎭 Modes
 
-## Configuration
+### 🛡️ HITL (Human-in-the-Loop)
 
-### XDG Paths
+The default. Every agent action is proposed first, displayed in the action panel, and executed only when you approve with a keypress. Safe, controlled, fully transparent.
+
+### 🚀 YOLO
+
+For the bold. Confident actions auto-execute. Uncertain actions still pause for approval. Destructive operations (`force push`, `merge`, `close`, `delete branch`) **always** require human confirmation, even in YOLO mode.
+
+## 🔔 Notifications
+
+Vigil sends lightweight desktop notifications for events that matter:
+
+| Event | Priority | Desktop Alert |
+|-------|----------|---------------|
+| CI failure | 🔴 High | ✅ Yes |
+| Changes requested | 🔴 High | ✅ Yes |
+| Merge conflict | 🔴 High | ✅ Yes |
+| Ready to merge | 🟡 Medium | — |
+| New comment | ⚪ Low | — |
+
+Clicking a notification opens the PR in your browser (requires `terminal-notifier` on macOS). First-poll notifications are suppressed to avoid startup noise.
+
+All toggleable via config:
+
+```json
+{
+  "notifications": {
+    "enabled": true,
+    "onCiFailure": true,
+    "onBlockingReview": true,
+    "onReadyToMerge": true,
+    "onNewComment": false
+  }
+}
+```
+
+## ⚙️ Configuration
+
+### 📁 XDG Paths
 
 | Purpose | Path |
 |---------|------|
-| Config | `$XDG_CONFIG_HOME/vigil/config.ts` |
+| Config | `$XDG_CONFIG_HOME/vigil/config.json` |
 | Knowledge | `$XDG_DATA_HOME/vigil/knowledge.md` |
 | Cache | `$XDG_CACHE_HOME/vigil/` |
 | Per-repo | `.vigilrc.ts` in project root |
 
-### Learning System
+### 🧠 Learning System
 
 Vigil gets smarter over time. The Learning agent captures patterns from every merged PR — reviewer tendencies, common CI failure fixes, response templates — and stores them in a human-readable markdown knowledge file. Edit it, seed it, or let it grow organically.
 
-## Architecture
+## 🏗️ Architecture
 
 | Layer | Technology |
 |-------|-----------|
 | Runtime | Bun |
 | TUI | Ink 6 + React 19 |
-| AI | Claude Agent SDK |
-| State | Zustand |
-| GitHub | `gh` CLI |
-| Git | simple-git |
+| AI | Claude Agent SDK (in-process streaming) |
+| State | Zustand (vanilla store) |
+| GitHub | `gh` CLI (two-pass fetch) |
+| Git | simple-git (worktree-scoped) |
 | Linting | Biome 2 |
 | Types | TypeScript 5.9 (strict) |
 
-### Data Flow
+### 🌊 Data Flow
 
 ```
 gh search prs --author=@me --state=open
-  → Poller (30s interval)
-    → Differ (snapshot comparison → events)
-      → State Machine (classify each PR)
-        → Zustand Store → Ink re-renders
-        → Orchestrator → Agent dispatch
+  → Poller (30s interval, updatedAt short-circuit)
+    → Differ (snapshot comparison → granular events)
+      → State Machine (classify each PR into 5 states)
+        → Zustand Store → Ink re-renders dashboard
+        → Orchestrator → Agent dispatch (parallel)
+          → Desktop notifications (high priority only)
 ```
 
-Two-pass GitHub fetch: `gh search prs` for discovery, `gh pr view` per-repo for rich detail (reviews, checks, comments).
-
-## Development
+## 🛠️ Development
 
 ```bash
 bun run dev          # Watch mode
 bun run build        # Bundle to dist/
 bun run check        # Typecheck + lint + test
 bun run lint:fix     # Auto-fix lint issues
-bun test             # Run tests
+bun test             # Run tests (166 tests, 95% coverage)
 bun run typecheck    # TypeScript only
 ```
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please ensure your changes pass `bun run check` before submitting.
 
@@ -222,7 +265,7 @@ Contributions are welcome! Please ensure your changes pass `bun run check` befor
 3. Commit using [conventional commits](https://www.conventionalcommits.org/)
 4. Open a pull request
 
-## License
+## ⚖️ License
 
 [Apache 2.0](LICENSE) — use it, extend it, build on it.
 
@@ -230,8 +273,10 @@ Contributions are welcome! Please ensure your changes pass `bun run check` befor
 
 <div align="center">
 
-Created by [Stefanie Jane](https://github.com/hyperb1iss)
+🐛 [Report Bug](https://github.com/hyperb1iss/vigil/issues) · 💡 [Request Feature](https://github.com/hyperb1iss/vigil/issues)
 
-If Vigil is keeping watch over your PRs, [buy me a coffee](https://ko-fi.com/hyperb1iss)! :coffee:
+Created by [Stefanie Jane 🌠](https://github.com/hyperb1iss)
+
+If Vigil is keeping watch over your PRs, [buy me a Monster Ultra Violet](https://ko-fi.com/hyperb1iss)! ⚡️
 
 </div>
