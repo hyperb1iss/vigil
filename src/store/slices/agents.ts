@@ -13,6 +13,8 @@ export interface AgentSlice {
   enqueueAction: (action: ProposedAction) => void;
   approveAction: (id: string) => void;
   rejectAction: (id: string) => void;
+  markActionExecuted: (id: string, output?: string) => void;
+  markActionFailed: (id: string, output: string) => void;
 }
 
 export const createAgentSlice: StateCreator<VigilStore, [], [], AgentSlice> = set => ({
@@ -68,4 +70,42 @@ export const createAgentSlice: StateCreator<VigilStore, [], [], AgentSlice> = se
         a.id === id ? { ...a, status: 'rejected' as const } : a
       ),
     })),
+
+  markActionExecuted: (id, output) =>
+    set(prev => {
+      const action = prev.actionQueue.find(a => a.id === id);
+      if (!action) return {};
+
+      const executedAt = new Date().toISOString();
+      const completed: CompletedAction = {
+        ...action,
+        status: 'executed',
+        executedAt,
+        output,
+      };
+
+      return {
+        actionQueue: prev.actionQueue.map(a => (a.id === id ? { ...a, status: 'executed' } : a)),
+        actionHistory: [completed, ...prev.actionHistory].slice(0, 500),
+      };
+    }),
+
+  markActionFailed: (id, output) =>
+    set(prev => {
+      const action = prev.actionQueue.find(a => a.id === id);
+      if (!action) return {};
+
+      const executedAt = new Date().toISOString();
+      const completed: CompletedAction = {
+        ...action,
+        status: 'failed',
+        executedAt,
+        output,
+      };
+
+      return {
+        actionQueue: prev.actionQueue.map(a => (a.id === id ? { ...a, status: 'failed' } : a)),
+        actionHistory: [completed, ...prev.actionHistory].slice(0, 500),
+      };
+    }),
 });

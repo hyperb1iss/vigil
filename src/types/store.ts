@@ -55,6 +55,8 @@ export interface VigilStore {
   enqueueAction: (action: ProposedAction) => void;
   approveAction: (id: string) => void;
   rejectAction: (id: string) => void;
+  markActionExecuted: (id: string, output?: string) => void;
+  markActionFailed: (id: string, output: string) => void;
 
   // UI actions
   setView: (view: ViewName) => void;

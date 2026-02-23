@@ -216,6 +216,32 @@ describe('AgentSlice', () => {
     expect(store.getState().actionQueue[0]?.status).toBe('approved');
     expect(store.getState().actionQueue[1]?.status).toBe('pending');
   });
+
+  test('markActionExecuted updates queue status and records history', () => {
+    const store = createTestStore();
+    store.getState().enqueueAction(makeAction());
+    store.getState().approveAction('action-1');
+    store.getState().markActionExecuted('action-1', 'Posted comment');
+
+    expect(store.getState().actionQueue[0]?.status).toBe('executed');
+    expect(store.getState().actionHistory).toHaveLength(1);
+    expect(store.getState().actionHistory[0]?.status).toBe('executed');
+    expect(store.getState().actionHistory[0]?.output).toBe('Posted comment');
+    expect(store.getState().actionHistory[0]?.executedAt).toBeDefined();
+  });
+
+  test('markActionFailed updates queue status and records history', () => {
+    const store = createTestStore();
+    store.getState().enqueueAction(makeAction());
+    store.getState().approveAction('action-1');
+    store.getState().markActionFailed('action-1', 'Network timeout');
+
+    expect(store.getState().actionQueue[0]?.status).toBe('failed');
+    expect(store.getState().actionHistory).toHaveLength(1);
+    expect(store.getState().actionHistory[0]?.status).toBe('failed');
+    expect(store.getState().actionHistory[0]?.output).toBe('Network timeout');
+    expect(store.getState().actionHistory[0]?.executedAt).toBeDefined();
+  });
 });
 
 // ─── UI Slice ──────────────────────────────────────────────────────────

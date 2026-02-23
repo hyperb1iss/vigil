@@ -216,10 +216,6 @@ export async function runFixAgent(
 
     store.completeAgentRun(runId, result);
 
-    for (const action of actions) {
-      store.enqueueAction(action);
-    }
-
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

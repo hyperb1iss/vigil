@@ -9,8 +9,6 @@
 import { vigilStore } from '../store/index.js';
 import type {
   ActionType,
-  AgentName,
-  AgentRun,
   ProposedAction,
   TriageClassification,
   TriagePriority,
@@ -19,6 +17,12 @@ import type {
 } from '../types/agents.js';
 import type { RepoConfig } from '../types/config.js';
 import type { EventType, PrEvent } from '../types/events.js';
+import { runEvidenceAgent } from './evidence.js';
+import { runFixAgent } from './fix.js';
+import { runLearningAgent } from './learning.js';
+import { runRebaseAgent } from './rebase.js';
+import { runRespondAgent } from './respond.js';
+import { runTriageAgent } from './triage.js';
 
 // ─── Triage (placeholder) ───────────────────────────────────────────────────
 
@@ -58,30 +62,6 @@ function triageEvent(event: PrEvent): TriageResult {
   };
 }
 
-// ─── Routing → ActionType ───────────────────────────────────────────────────
-
-function routingToActionType(routing: TriageRouting): ActionType {
-  const actionMap: Record<TriageRouting, ActionType> = {
-    fix: 'apply_fix',
-    respond: 'post_comment',
-    rebase: 'rebase',
-    evidence: 'post_comment',
-    dismiss: 'dismiss',
-  };
-  return actionMap[routing];
-}
-
-function routingToAgent(routing: TriageRouting): AgentName {
-  const agentMap: Record<TriageRouting, AgentName> = {
-    fix: 'fix',
-    respond: 'respond',
-    rebase: 'rebase',
-    evidence: 'evidence',
-    dismiss: 'triage',
-  };
-  return agentMap[routing];
-}
-
 // ─── Confirmation Logic ─────────────────────────────────────────────────────
 
 /**
@@ -95,6 +75,96 @@ export function requiresConfirmation(
   const list = repoConfig?.alwaysConfirm;
   if (!list || list.length === 0) return false;
   return list.includes(actionType);
+}
+
+function applyModePolicy(
+  action: ProposedAction,
+  mode: 'hitl' | 'yolo',
+  repoConfig?: RepoConfig | null | undefined
+): ProposedAction {
+  if (action.status === 'failed' || action.status === 'executed' || action.status === 'rejected') {
+    return action;
+  }
+
+  const needsConfirmation =
+    mode === 'hitl' || action.requiresConfirmation || requiresConfirmation(action.type, repoConfig);
+
+  return {
+    ...action,
+    requiresConfirmation: needsConfirmation,
+    status: needsConfirmation ? 'pending' : 'approved',
+  };
+}
+
+function makeNoWorktreeAction(event: PrEvent, triage: TriageResult): ProposedAction {
+  return {
+    id: crypto.randomUUID(),
+    type: 'create_worktree',
+    prKey: event.prKey,
+    agent: 'triage',
+    description: `Missing worktree for ${event.prKey}; cannot run ${triage.routing} agent automatically.`,
+    detail: triage.reasoning,
+    requiresConfirmation: true,
+    status: 'pending',
+  };
+}
+
+function makeFailedAction(event: PrEvent, actionType: ActionType, message: string): ProposedAction {
+  return {
+    id: crypto.randomUUID(),
+    type: actionType,
+    prKey: event.prKey,
+    agent: 'triage',
+    description: message,
+    requiresConfirmation: false,
+    status: 'failed',
+  };
+}
+
+async function buildAction(
+  event: PrEvent,
+  triage: TriageResult,
+  mode: 'hitl' | 'yolo',
+  repoConfig?: RepoConfig | null | undefined
+): Promise<ProposedAction | null> {
+  switch (triage.routing) {
+    case 'dismiss':
+      return null;
+
+    case 'respond': {
+      const action = await runRespondAgent(event, event.pr);
+      return applyModePolicy(action, mode, repoConfig);
+    }
+
+    case 'fix': {
+      const worktreePath = event.pr.worktree?.path;
+      if (!worktreePath) {
+        return applyModePolicy(makeNoWorktreeAction(event, triage), mode, repoConfig);
+      }
+
+      const result = await runFixAgent(event, event.pr, worktreePath);
+      const action = result.actions[0];
+      if (!action) {
+        return makeFailedAction(event, 'apply_fix', result.summary);
+      }
+      return applyModePolicy(action, mode, repoConfig);
+    }
+
+    case 'rebase': {
+      const worktreePath = event.pr.worktree?.path;
+      if (!worktreePath) {
+        return applyModePolicy(makeNoWorktreeAction(event, triage), mode, repoConfig);
+      }
+
+      const action = await runRebaseAgent(event, event.pr, worktreePath);
+      return applyModePolicy(action, mode, repoConfig);
+    }
+
+    case 'evidence': {
+      const action = await runEvidenceAgent(event, event.pr, event.pr.worktree?.path);
+      return applyModePolicy(action, mode, repoConfig);
+    }
+  }
 }
 
 // ─── Core Event Handler ─────────────────────────────────────────────────────
@@ -111,52 +181,25 @@ export async function handleEvents(
   events: PrEvent[],
   repoConfig?: RepoConfig | null | undefined
 ): Promise<void> {
-  const store = vigilStore.getState();
-
   for (const event of events) {
-    const triage = triageEvent(event);
+    // Learning is side-effect only; do not block event routing on it.
+    if (event.type === 'pr_merged' || event.type === 'pr_closed') {
+      void runLearningAgent(event, event.pr);
+    }
 
-    // Dismissed events need no action
-    if (triage.routing === 'dismiss') continue;
+    let triage: TriageResult;
+    try {
+      triage = await runTriageAgent(event, event.pr);
+      if (triage.routing === 'dismiss' && triage.reasoning.startsWith('Triage failed:')) {
+        triage = triageEvent(event);
+      }
+    } catch {
+      triage = triageEvent(event);
+    }
 
-    const agentName = routingToAgent(triage.routing);
-    const actionType = routingToActionType(triage.routing);
-
-    // Create the agent run
-    const runId = crypto.randomUUID();
-    const agentRun: AgentRun = {
-      id: runId,
-      agent: agentName,
-      prKey: event.prKey,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      streamingOutput: '',
-    };
-
-    store.startAgentRun(agentRun);
-
-    // Build proposed action
-    const needsConfirmation = store.mode === 'hitl' || requiresConfirmation(actionType, repoConfig);
-
-    const action: ProposedAction = {
-      id: crypto.randomUUID(),
-      type: actionType,
-      prKey: event.prKey,
-      agent: agentName,
-      description: `${triage.routing}: ${triage.reasoning}`,
-      requiresConfirmation: needsConfirmation,
-      status: needsConfirmation ? 'pending' : 'approved',
-    };
-
-    // Enqueue the action (both modes go through the queue;
-    // the UI / executor will pick up approved ones automatically)
-    store.enqueueAction(action);
-
-    // Mark run as completed with the proposed action
-    store.completeAgentRun(runId, {
-      success: true,
-      summary: triage.reasoning,
-      actions: [action],
-    });
+    const action = await buildAction(event, triage, vigilStore.getState().mode, repoConfig);
+    if (action) {
+      vigilStore.getState().enqueueAction(action);
+    }
   }
 }

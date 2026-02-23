@@ -5,6 +5,7 @@ import React from 'react';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
+import { startActionExecutor } from './agents/executor.js';
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
@@ -207,6 +208,8 @@ async function main(): Promise<void> {
     },
   });
 
+  const stopExecutor = startActionExecutor();
+
   // Render TUI
   const { waitUntilExit } = render(React.createElement(App));
 
@@ -214,6 +217,7 @@ async function main(): Promise<void> {
     await waitUntilExit();
   } finally {
     cleanup();
+    stopExecutor();
   }
 }
 
