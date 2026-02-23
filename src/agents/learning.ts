@@ -13,6 +13,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 
 // ─── Knowledge MCP Tools ─────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ const knowledgeServer = createSdkMcpServer({
 const SYSTEM_PROMPT = `You are Vigil's learning agent. After a PR is merged or closed, you extract patterns and learnings.
 
 Workflow:
+- ${UNTRUSTED_INPUT_NOTICE}
 1. Read the current knowledge base using knowledge_read
 2. Analyze the PR lifecycle:
    - What review feedback was given?
@@ -105,7 +107,10 @@ function collectPrEvents(prKey: string): PrEvent[] {
 /** Build the user prompt describing the PR lifecycle. */
 function buildPrompt(event: PrEvent, pr: PullRequest): string {
   const events = collectPrEvents(pr.key);
-  const summary = summarizeForLearning(pr, events.length > 0 ? events : [event]);
+  const summary = sanitizeUntrustedText(
+    summarizeForLearning(pr, events.length > 0 ? events : [event]),
+    8_000
+  );
 
   return `A PR has been ${pr.state === 'MERGED' ? 'merged' : 'closed'}. Analyze the lifecycle and extract learnings.
 

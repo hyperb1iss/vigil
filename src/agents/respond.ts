@@ -13,6 +13,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { githubTools } from './tools/github.js';
 
 // ─── MCP Server ──────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ const respondMcp = createSdkMcpServer({
 const SYSTEM_PROMPT = `You are Vigil's respond agent. Draft contextual, constructive replies to PR review feedback.
 
 Approach:
+- ${UNTRUSTED_INPUT_NOTICE}
 - Read all review comments and the PR description to understand full context
 - For blocking feedback: acknowledge the issue and describe the fix plan
 - For scope creep suggestions: politely push back, citing the PR's original intent
@@ -49,18 +51,22 @@ function buildPrompt(event: PrEvent, pr: PullRequest): string {
   const knowledge = getKnowledgeAsContext();
   const knowledgeSection = knowledge ? `\n<knowledge-base>\n${knowledge}\n</knowledge-base>\n` : '';
 
-  const reviews = pr.reviews.map(r => `- ${r.author.login} (${r.state}): ${r.body}`).join('\n');
+  const reviews = pr.reviews
+    .map(r => `- ${r.author.login} (${r.state}): ${sanitizeUntrustedText(r.body, 400)}`)
+    .join('\n');
 
-  const comments = pr.comments.map(c => `- ${c.author.login}: ${c.body}`).join('\n');
+  const comments = pr.comments
+    .map(c => `- ${c.author.login}: ${sanitizeUntrustedText(c.body, 400)}`)
+    .join('\n');
 
   const triggerData = formatTrigger(event);
 
   return `Draft a reply to the review feedback on this PR.
 ${knowledgeSection}
 <pr>
-  <title>${pr.title}</title>
-  <description>${pr.body}</description>
-  <branch>${pr.headRefName} -> ${pr.baseRefName}</branch>
+  <title>${sanitizeUntrustedText(pr.title, 200)}</title>
+  <description>${sanitizeUntrustedText(pr.body, 2_000)}</description>
+  <branch>${sanitizeUntrustedText(pr.headRefName, 120)} -> ${sanitizeUntrustedText(pr.baseRefName, 120)}</branch>
   <stats>+${pr.additions} -${pr.deletions} across ${pr.changedFiles} files</stats>
 </pr>
 
@@ -85,9 +91,9 @@ function formatTrigger(event: PrEvent): string {
 
   switch (data.type) {
     case 'review_submitted':
-      return `New review from ${data.review.author.login} (${data.review.state}): ${data.review.body}`;
+      return `New review from ${data.review.author.login} (${data.review.state}): ${sanitizeUntrustedText(data.review.body, 500)}`;
     case 'comment_added':
-      return `New comment from ${data.comment.author.login}: ${data.comment.body}`;
+      return `New comment from ${data.comment.author.login}: ${sanitizeUntrustedText(data.comment.body, 500)}`;
     default:
       return `Event: ${event.type}`;
   }

@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, TriageResult } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 
 interface TextBlock {
   type: 'text';
@@ -92,6 +93,7 @@ Given a PR event and its context, return a JSON classification:
 - reasoning: Brief explanation of your classification
 
 Rules:
+- ${UNTRUSTED_INPUT_NOTICE}
 - CI failures on non-draft PRs are always "blocking" + "fix" + "immediate"
 - Merge conflicts are "blocking" + "rebase" + "immediate"
 - Bot reviews (from users with [bot] suffix or known bot accounts) are usually "noise" unless they block merge
@@ -128,9 +130,18 @@ const TRIAGE_OUTPUT_SCHEMA = {
 // ─── Prompt Builder ──────────────────────────────────────────────────────────
 
 function buildTriagePrompt(event: PrEvent, pr: PullRequest): string {
+  const eventData =
+    event.data === undefined
+      ? 'none'
+      : sanitizeUntrustedText(JSON.stringify(event.data, null, 2), 1_500);
   const checksJson =
     pr.checks.length > 0
-      ? pr.checks.map(c => `  - ${c.name}: ${c.status} / ${c.conclusion ?? 'pending'}`).join('\n')
+      ? pr.checks
+          .map(
+            c =>
+              `  - ${sanitizeUntrustedText(c.name, 120)}: ${c.status} / ${c.conclusion ?? 'pending'}`
+          )
+          .join('\n')
       : '  (none)';
 
   const reviewsJson =
@@ -138,7 +149,7 @@ function buildTriagePrompt(event: PrEvent, pr: PullRequest): string {
       ? pr.reviews
           .map(
             r =>
-              `  - ${r.author.login}${r.author.isBot ? ' [bot]' : ''}: ${r.state} — ${r.body.slice(0, 200)}`
+              `  - ${r.author.login}${r.author.isBot ? ' [bot]' : ''}: ${r.state} — ${sanitizeUntrustedText(r.body, 200)}`
           )
           .join('\n')
       : '  (none)';
@@ -148,15 +159,15 @@ function buildTriagePrompt(event: PrEvent, pr: PullRequest): string {
 ## Event
 - Type: ${event.type}
 - Timestamp: ${event.timestamp}
-- Event data: ${event.data ? JSON.stringify(event.data, null, 2) : 'none'}
+- Event data: ${eventData}
 
 ## PR: ${pr.key}
-- Title: ${pr.title}
+- Title: ${sanitizeUntrustedText(pr.title, 200)}
 - State: ${pr.state}
 - Draft: ${pr.isDraft}
 - Mergeable: ${pr.mergeable}
 - Review decision: ${pr.reviewDecision || 'none'}
-- Branch: ${pr.headRefName} -> ${pr.baseRefName}
+- Branch: ${sanitizeUntrustedText(pr.headRefName, 120)} -> ${sanitizeUntrustedText(pr.baseRefName, 120)}
 - Changes: +${pr.additions} -${pr.deletions} (${pr.changedFiles} files)
 - Author: ${pr.author.login}${pr.author.isBot ? ' [bot]' : ''}
 
@@ -167,7 +178,7 @@ ${checksJson}
 ${reviewsJson}
 
 ## Labels
-${pr.labels.map(l => l.name).join(', ') || '(none)'}
+${pr.labels.map(l => sanitizeUntrustedText(l.name, 60)).join(', ') || '(none)'}
 
 Classify and route this event.`;
 }

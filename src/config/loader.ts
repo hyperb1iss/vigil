@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import type { RepoConfig, VigilConfig } from '../types/index.js';
 import { defaultConfig } from './defaults.js';
@@ -25,9 +26,14 @@ export function loadGlobalConfig(): VigilConfig {
     return { ...defaultConfig };
   }
 
-  const raw = readFileSync(configPath, 'utf-8');
-  const overrides = JSON.parse(raw) as Partial<VigilConfig>;
-  return mergeConfig(defaultConfig, overrides);
+  try {
+    const raw = readFileSync(configPath, 'utf-8');
+    const overrides = JSON.parse(raw) as Partial<VigilConfig>;
+    return mergeConfig(defaultConfig, overrides);
+  } catch {
+    // Invalid user config should not crash the app; fall back to defaults.
+    return { ...defaultConfig };
+  }
 }
 
 /** Ensure all XDG directories exist. */
@@ -40,12 +46,26 @@ export function ensureDirectories(): void {
 
 /** Load per-repo config from `.vigilrc.ts` if it exists. */
 export async function loadRepoConfig(repoDir: string): Promise<RepoConfig | null> {
+  const jsonPath = join(repoDir, '.vigilrc.json');
+  if (existsSync(jsonPath)) {
+    try {
+      const raw = readFileSync(jsonPath, 'utf-8');
+      return JSON.parse(raw) as RepoConfig;
+    } catch {
+      return null;
+    }
+  }
+
   const rcPath = join(repoDir, '.vigilrc.ts');
 
   if (!existsSync(rcPath)) {
     return null;
   }
 
-  const mod = (await import(rcPath)) as { default?: RepoConfig };
+  if (process.env.VIGIL_ALLOW_TS_CONFIG !== '1') {
+    return null;
+  }
+
+  const mod = (await import(pathToFileURL(rcPath).href)) as { default?: RepoConfig };
   return mod.default ?? null;
 }

@@ -185,7 +185,9 @@ Click a notification → opens the PR in your browser. First-poll alerts are sup
 | `$XDG_CONFIG_HOME/vigil/config.json` | Global config |
 | `$XDG_DATA_HOME/vigil/knowledge.md` | Learning knowledge base |
 | `$XDG_CACHE_HOME/vigil/` | Poll cache + snapshots |
-| `.vigilrc.ts` | Per-repo overrides |
+| `.vigilrc.json` | Per-repo overrides |
+
+`.vigilrc.ts` execution is disabled by default for safety. Enable it explicitly with `VIGIL_ALLOW_TS_CONFIG=1`.
 
 ### 🧠 Learning
 

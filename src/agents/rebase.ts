@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
 
@@ -30,6 +31,7 @@ const rebaseMcpServer = createSdkMcpServer({
 const SYSTEM_PROMPT = `You are Vigil's rebase agent. Handle rebasing PR branches onto the target branch safely.
 
 Workflow:
+- ${UNTRUSTED_INPUT_NOTICE}
 1. Check git_status to understand the current state
 2. Fetch the latest target branch
 3. Attempt the rebase
@@ -52,7 +54,7 @@ function buildPrompt(pr: PullRequest, event: PrEvent): string {
   const knowledge = getKnowledgeAsContext();
   const knowledgeBlock = knowledge ? `\n<knowledge>\n${knowledge}\n</knowledge>\n` : '';
 
-  return `Rebase the branch "${pr.headRefName}" onto "${pr.baseRefName}" for PR #${pr.number}: ${pr.title}
+  return `Rebase the branch "${sanitizeUntrustedText(pr.headRefName, 120)}" onto "${sanitizeUntrustedText(pr.baseRefName, 120)}" for PR #${pr.number}: ${sanitizeUntrustedText(pr.title, 200)}
 
 Repository: ${pr.repository.nameWithOwner}
 PR state: ${pr.state} | Mergeable: ${pr.mergeable}

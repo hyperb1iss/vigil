@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
 import { githubTools } from './tools/github.js';
@@ -36,6 +37,7 @@ const evidenceMcpServer = createSdkMcpServer({
 const EVIDENCE_SYSTEM_PROMPT = `You are Vigil's evidence agent. Your job is to gather and present verification evidence for pull requests.
 
 Workflow:
+- ${UNTRUSTED_INPUT_NOTICE}
 1. Read the PR description and existing comments to find evidence/verification sections
 2. Identify what tests or checks are relevant to this PR's changes
 3. If a worktree is available, run the relevant tests and capture results
@@ -63,14 +65,20 @@ function buildEvidencePrompt(
 ): string {
   const checksJson =
     pr.checks.length > 0
-      ? pr.checks.map(c => `  - ${c.name}: ${c.status} / ${c.conclusion ?? 'pending'}`).join('\n')
+      ? pr.checks
+          .map(
+            c =>
+              `  - ${sanitizeUntrustedText(c.name, 120)}: ${c.status} / ${c.conclusion ?? 'pending'}`
+          )
+          .join('\n')
       : '  (none)';
 
   const commentsJson =
     pr.comments.length > 0
       ? pr.comments
           .map(
-            c => `  - ${c.author.login}${c.author.isBot ? ' [bot]' : ''}: ${c.body.slice(0, 300)}`
+            c =>
+              `  - ${c.author.login}${c.author.isBot ? ' [bot]' : ''}: ${sanitizeUntrustedText(c.body, 300)}`
           )
           .join('\n')
       : '  (none)';
@@ -85,10 +93,10 @@ function buildEvidencePrompt(
 - Timestamp: ${event.timestamp}
 
 ## PR: ${pr.key}
-- Title: ${pr.title}
-- Body: ${pr.body.slice(0, 1000)}
+- Title: ${sanitizeUntrustedText(pr.title, 200)}
+- Body: ${sanitizeUntrustedText(pr.body, 1_000)}
 - State: ${pr.state}
-- Branch: ${pr.headRefName} -> ${pr.baseRefName}
+- Branch: ${sanitizeUntrustedText(pr.headRefName, 120)} -> ${sanitizeUntrustedText(pr.baseRefName, 120)}
 - Changes: +${pr.additions} -${pr.deletions} (${pr.changedFiles} files)
 - Repository: ${pr.repository.nameWithOwner}
 

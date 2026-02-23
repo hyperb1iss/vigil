@@ -17,6 +17,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentResult, AgentRun, ProposedAction } from '../types/agents.js';
 import type { ChecksChangedData, PrEvent, ReviewSubmittedData } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
 import { githubTools } from './tools/github.js';
@@ -35,6 +36,7 @@ Workflow:
 7. Stage and commit with a clear conventional commit message
 
 Rules:
+- ${UNTRUSTED_INPUT_NOTICE}
 - Apply the MINIMAL fix. Don't refactor surrounding code.
 - For CI failures: read the logs, identify the exact error, fix it
 - For review feedback: address exactly what was requested, nothing more
@@ -59,8 +61,8 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
   const sections: string[] = [
     `# Fix Request for ${pr.repository.nameWithOwner}#${pr.number}`,
     '',
-    `**Title:** ${pr.title}`,
-    `**Branch:** ${pr.headRefName} → ${pr.baseRefName}`,
+    `**Title:** ${sanitizeUntrustedText(pr.title, 200)}`,
+    `**Branch:** ${sanitizeUntrustedText(pr.headRefName, 120)} → ${sanitizeUntrustedText(pr.baseRefName, 120)}`,
     `**Worktree:** ${worktreePath}`,
     `**Changed files:** ${pr.changedFiles} (+${pr.additions} / -${pr.deletions})`,
   ];
@@ -73,7 +75,7 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
     sections.push(
       `**Reviewer:** ${review.author.login}`,
       `**State:** ${review.state}`,
-      `**Body:**\n${review.body}`
+      `**Body:**\n${sanitizeUntrustedText(review.body, 1_500)}`
     );
   }
 
@@ -95,7 +97,9 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
   if (pr.reviews.length > 0) {
     sections.push('', '## Recent Reviews');
     for (const review of pr.reviews.slice(-5)) {
-      sections.push(`- **${review.author.login}** (${review.state}): ${review.body.slice(0, 500)}`);
+      sections.push(
+        `- **${review.author.login}** (${review.state}): ${sanitizeUntrustedText(review.body, 500)}`
+      );
     }
   }
 
@@ -103,7 +107,7 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
   if (pr.comments.length > 0) {
     sections.push('', '## Recent Comments');
     for (const comment of pr.comments.slice(-5)) {
-      sections.push(`- **${comment.author.login}**: ${comment.body.slice(0, 500)}`);
+      sections.push(`- **${comment.author.login}**: ${sanitizeUntrustedText(comment.body, 500)}`);
     }
   }
 
