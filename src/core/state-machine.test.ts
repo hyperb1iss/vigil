@@ -204,6 +204,15 @@ describe('classifyPr → dormant', () => {
     });
     expect(classifyPr(pr, THRESHOLD_HOURS)).toBe('hot');
   });
+
+  test('week-old PR with hot signals cools down to dormant', () => {
+    const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const pr = makePr({
+      updatedAt: oldDate,
+      reviewDecision: 'CHANGES_REQUESTED',
+    });
+    expect(classifyPr(pr, THRESHOLD_HOURS)).toBe('dormant');
+  });
 });
 
 // ─── Waiting State (Fallthrough) ───────────────────────────────────────
