@@ -612,6 +612,13 @@ export async function fetchMyOpenPrs(
     prMap.set(pr.key, pr);
   }
 
+  // Cold start optimization: return quickly on first poll and hydrate details
+  // on subsequent polls. This avoids a blank "waiting" screen while we fan out
+  // `gh pr list` across many repos.
+  if (!knownPrs || knownPrs.size === 0) {
+    return [...prMap.values()];
+  }
+
   // Short-circuit: only fetch detail for repos with changed PRs
   const staleRepos = findStaleRepos(repoSet, searchResults, knownPrs, prMap);
 
