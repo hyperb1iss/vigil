@@ -24,6 +24,8 @@ import { runRebaseAgent } from './rebase.js';
 import { runRespondAgent } from './respond.js';
 import { runTriageAgent } from './triage.js';
 
+const STALE_TRIAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
+
 // ─── Triage (placeholder) ───────────────────────────────────────────────────
 
 /**
@@ -74,6 +76,22 @@ export function requiresConfirmation(
   const list = repoConfig?.alwaysConfirm;
   if (!list || list.length === 0) return false;
   return list.includes(actionType);
+}
+
+/**
+ * Skip triage for PRs that have not been touched recently to avoid
+ * startup noise on long-dormant queues.
+ */
+export function shouldSkipTriageForStalePr(
+  event: PrEvent,
+  maxAgeMs = STALE_TRIAGE_WINDOW_MS
+): boolean {
+  const updatedMs = Date.parse(event.pr.updatedAt);
+  const eventMs = Date.parse(event.timestamp);
+  if (!Number.isFinite(updatedMs) || !Number.isFinite(eventMs)) {
+    return false;
+  }
+  return eventMs - updatedMs > maxAgeMs;
 }
 
 function applyModePolicy(
@@ -181,6 +199,10 @@ export async function handleEvents(
   repoConfig?: RepoConfig | null | undefined
 ): Promise<void> {
   for (const event of events) {
+    if (shouldSkipTriageForStalePr(event)) {
+      continue;
+    }
+
     // Learning is side-effect only; do not block event routing on it.
     if (event.type === 'pr_merged' || event.type === 'pr_closed') {
       void runLearningAgent(event, event.pr);
