@@ -9,6 +9,7 @@ const {
   normalizeComment,
   normalizeChecks,
   normalizeMergeable,
+  normalizeMergeStateStatus,
   normalizeReviewDecision,
   normalizeState,
   mapStatusContextState,
@@ -262,6 +263,26 @@ describe('normalizeMergeable', () => {
   });
 });
 
+// ─── normalizeMergeStateStatus ──────────────────────────────────────────
+
+describe('normalizeMergeStateStatus', () => {
+  test('BLOCKED returns BLOCKED', () => {
+    expect(normalizeMergeStateStatus('BLOCKED')).toBe('BLOCKED');
+  });
+
+  test('CLEAN returns CLEAN', () => {
+    expect(normalizeMergeStateStatus('CLEAN')).toBe('CLEAN');
+  });
+
+  test('unknown returns UNKNOWN', () => {
+    expect(normalizeMergeStateStatus('SOMETHING')).toBe('UNKNOWN');
+  });
+
+  test('undefined returns UNKNOWN', () => {
+    expect(normalizeMergeStateStatus(undefined)).toBe('UNKNOWN');
+  });
+});
+
 // ─── normalizeReviewDecision ───────────────────────────────────────────
 
 describe('normalizeReviewDecision', () => {
@@ -459,6 +480,7 @@ describe('buildPrFromDetail', () => {
     expect(pr.title).toBe('Add feature');
     expect(pr.state).toBe('OPEN');
     expect(pr.mergeable).toBe('MERGEABLE');
+    expect(pr.mergeStateStatus).toBe('CLEAN');
     expect(pr.reviewDecision).toBe('APPROVED');
     expect(pr.reviews).toHaveLength(1);
     expect(pr.comments).toHaveLength(1);
@@ -501,6 +523,7 @@ describe('buildPrFromDetail', () => {
     const pr = buildPrFromDetail(raw, 'owner/repo');
     expect(pr.author.login).toBe('unknown');
     expect(pr.mergeable).toBe('UNKNOWN');
+    expect(pr.mergeStateStatus).toBe('UNKNOWN');
     expect(pr.reviewDecision).toBe('');
     expect(pr.checks).toHaveLength(0);
   });
@@ -536,6 +559,7 @@ describe('buildPrFromSearch', () => {
     expect(pr.comments).toHaveLength(0);
     expect(pr.checks).toHaveLength(0);
     expect(pr.mergeable).toBe('UNKNOWN');
+    expect(pr.mergeStateStatus).toBe('UNKNOWN');
     expect(pr.reviewDecision).toBe('');
     expect(pr.headRefName).toBe('');
     expect(pr.additions).toBe(0);

@@ -28,6 +28,28 @@ const MAX_COMMENT_BODY = 3;
 /** Minimum content width to enable two-column layout */
 const TWO_COL_MIN_WIDTH = 100;
 
+function mergeStatusStyle(status: PullRequest['mergeStateStatus']): {
+  label: string;
+  color: string;
+} | null {
+  if (!status || status === 'UNKNOWN') return null;
+
+  switch (status) {
+    case 'CLEAN':
+    case 'HAS_HOOKS':
+      return { label: status, color: semantic.success };
+    case 'BLOCKED':
+    case 'DIRTY':
+      return { label: status, color: semantic.error };
+    case 'BEHIND':
+    case 'DRAFT':
+    case 'UNSTABLE':
+      return { label: status, color: semantic.warning };
+    default:
+      return { label: status, color: semantic.muted };
+  }
+}
+
 // ─── Markup Stripping ────────────────────────────────────────────────
 
 function stripMarkup(text: string): string {
@@ -690,8 +712,18 @@ function buildHeaderCard(
           </Text>
         )}
         {pr.mergeable === 'MERGEABLE' && (
-          <Text color={semantic.success}> {icons.middleDot} MERGEABLE</Text>
+          <Text color={semantic.success}> {icons.middleDot} NO CONFLICTS</Text>
         )}
+        {(() => {
+          const status = mergeStatusStyle(pr.mergeStateStatus);
+          if (!status) return null;
+          return (
+            <Text color={status.color}>
+              {' '}
+              {icons.middleDot} {status.label}
+            </Text>
+          );
+        })()}
       </Text>,
       <Text color={semantic.timestamp} bold>
         updated {timeAgo(pr.updatedAt)}

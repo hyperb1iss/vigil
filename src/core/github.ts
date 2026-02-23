@@ -10,6 +10,7 @@ import type {
   CheckConclusion,
   CheckStatus,
   MergeableState,
+  MergeStateStatus,
   PrAuthor,
   PrCheck,
   PrComment,
@@ -347,6 +348,27 @@ function normalizeMergeable(raw: string | undefined): MergeableState {
   }
 }
 
+function normalizeMergeStateStatus(raw: string | undefined): MergeStateStatus {
+  switch (raw?.toUpperCase()) {
+    case 'BEHIND':
+      return 'BEHIND';
+    case 'BLOCKED':
+      return 'BLOCKED';
+    case 'CLEAN':
+      return 'CLEAN';
+    case 'DIRTY':
+      return 'DIRTY';
+    case 'DRAFT':
+      return 'DRAFT';
+    case 'HAS_HOOKS':
+      return 'HAS_HOOKS';
+    case 'UNSTABLE':
+      return 'UNSTABLE';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
 function normalizeReviewDecision(raw: string | undefined): ReviewDecision {
   switch (raw?.toUpperCase()) {
     case 'APPROVED':
@@ -381,6 +403,7 @@ function buildPrFromDetail(raw: GhPrDetail, nameWithOwner: string): PullRequest 
     isDraft: raw.isDraft,
     state: normalizeState(raw.state),
     mergeable: normalizeMergeable(raw.mergeable),
+    mergeStateStatus: normalizeMergeStateStatus(raw.mergeStateStatus),
     reviewDecision: normalizeReviewDecision(raw.reviewDecision),
     reviews: (raw.reviews ?? []).map(normalizeReview),
     comments: (raw.comments ?? []).map(normalizeComment),
@@ -414,6 +437,7 @@ function buildPrFromSearch(raw: GhSearchPr): PullRequest {
     isDraft: raw.isDraft,
     state: normalizeState(raw.state),
     mergeable: 'UNKNOWN',
+    mergeStateStatus: 'UNKNOWN',
     reviewDecision: '',
     reviews: [],
     comments: [],
@@ -712,6 +736,7 @@ export const _internal = {
   normalizeComment,
   normalizeChecks,
   normalizeMergeable,
+  normalizeMergeStateStatus,
   normalizeReviewDecision,
   normalizeState,
   mapStatusContextState,

@@ -3,6 +3,15 @@ export type PrState = 'hot' | 'waiting' | 'ready' | 'dormant' | 'blocked';
 export type CheckStatus = 'COMPLETED' | 'IN_PROGRESS' | 'QUEUED' | 'PENDING';
 export type CheckConclusion = 'SUCCESS' | 'FAILURE' | 'SKIPPED' | 'CANCELLED' | 'NEUTRAL' | null;
 export type MergeableState = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+export type MergeStateStatus =
+  | 'BEHIND'
+  | 'BLOCKED'
+  | 'CLEAN'
+  | 'DIRTY'
+  | 'DRAFT'
+  | 'HAS_HOOKS'
+  | 'UNKNOWN'
+  | 'UNSTABLE';
 export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | '';
 export type ReviewState = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING';
 
@@ -66,6 +75,7 @@ export interface PullRequest {
   isDraft: boolean;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   mergeable: MergeableState;
+  mergeStateStatus?: MergeStateStatus | undefined;
   reviewDecision: ReviewDecision;
   reviews: PrReview[];
   comments: PrComment[];
