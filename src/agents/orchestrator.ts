@@ -204,7 +204,9 @@ export async function handleEvents(
     }
 
     // Learning is side-effect only; do not block event routing on it.
-    if (event.type === 'pr_merged' || event.type === 'pr_closed') {
+    // We intentionally do not run learning on pr_closed because disappearance
+    // events can be transient when upstream data is incomplete.
+    if (event.type === 'pr_merged') {
       void runLearningAgent(event, event.pr);
     }
 

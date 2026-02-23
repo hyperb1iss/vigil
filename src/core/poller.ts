@@ -13,6 +13,49 @@ export interface PollerOptions {
 }
 
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
+const DISAPPEARANCE_CONFIRM_POLLS = 2;
+const missingStreaks = new Map<string, number>();
+
+/**
+ * Stabilize transient "PR disappeared" snapshots by requiring consecutive misses
+ * before treating a PR as closed/merged externally.
+ */
+function stabilizeCurrentSnapshot(
+  previous: Map<string, PullRequest>,
+  fetchedCurrent: Map<string, PullRequest>,
+  streaks: Map<string, number>,
+  confirmAfterPolls = DISAPPEARANCE_CONFIRM_POLLS
+): Map<string, PullRequest> {
+  const threshold = Math.max(1, Math.floor(confirmAfterPolls));
+  const stabilized = new Map(fetchedCurrent);
+
+  for (const key of [...streaks.keys()]) {
+    if (!previous.has(key) && !fetchedCurrent.has(key)) {
+      streaks.delete(key);
+    }
+  }
+
+  for (const key of fetchedCurrent.keys()) {
+    streaks.delete(key);
+  }
+
+  for (const [key, previousPr] of previous) {
+    if (fetchedCurrent.has(key)) {
+      continue;
+    }
+
+    const nextStreak = (streaks.get(key) ?? 0) + 1;
+    if (nextStreak < threshold) {
+      streaks.set(key, nextStreak);
+      stabilized.set(key, previousPr);
+      continue;
+    }
+
+    streaks.delete(key);
+  }
+
+  return stabilized;
+}
 
 /**
  * Execute a single poll cycle:
@@ -37,18 +80,21 @@ export async function poll(repos?: string[]): Promise<PrEvent[]> {
       currentMap.set(pr.key, pr);
     }
 
+    // Stabilize transient disappearance glitches before diffing.
+    const stabilizedCurrentMap = stabilizeCurrentSnapshot(state.prs, currentMap, missingStreaks);
+
     // Diff against previous
-    const events = diffPrs(state.prs, currentMap);
+    const events = diffPrs(state.prs, stabilizedCurrentMap);
 
     // Classify states
     const dormantThreshold = state.config.display.dormantThresholdHours;
-    for (const [key, pr] of currentMap) {
+    for (const [key, pr] of stabilizedCurrentMap) {
       const prState = classifyPr(pr, dormantThreshold);
       store.getState().setPrState(key, prState);
     }
 
     // Update store
-    store.getState().setPrs(currentMap);
+    store.getState().setPrs(stabilizedCurrentMap);
     store.getState().setLastPollAt(new Date().toISOString());
     store.getState().setPollError(null);
 
@@ -97,3 +143,8 @@ export function startPoller(options: PollerOptions): () => void {
     }
   };
 }
+
+/** Exposed for unit testing only. */
+export const _internal = {
+  stabilizeCurrentSnapshot,
+};
