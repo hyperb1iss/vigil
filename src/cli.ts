@@ -23,6 +23,7 @@ import type { Notification } from './types/store.js';
 
 const MIN_POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_INTERVAL_MS = 15 * 60_000;
+const SKIP_STARTUP_EVENTS = process.env.VIGIL_SKIP_STARTUP_EVENTS === '1';
 
 function clampPollInterval(ms: number): number {
   if (!Number.isFinite(ms)) return MIN_POLL_INTERVAL_MS;
@@ -195,7 +196,9 @@ async function main(): Promise<void> {
   // Wire up events — skip notifications on the first poll (initial load)
   let isFirstPoll = true;
   const onEvents = async (events: PrEvent[]): Promise<void> => {
-    const skipNotifs = isFirstPoll;
+    const isStartupPoll = isFirstPoll;
+    const skipNotifs = isStartupPoll;
+    const skipAgents = isStartupPoll && SKIP_STARTUP_EVENTS;
     isFirstPoll = false;
 
     // Send desktop notifications (skip initial load to avoid blast)
@@ -205,7 +208,7 @@ async function main(): Promise<void> {
     }
 
     // Route to agent orchestrator (unless --no-agents)
-    if (!argv.noAgents) {
+    if (!argv.noAgents && !skipAgents) {
       await handleEvents(events);
     }
   };
