@@ -149,6 +149,7 @@ interface GhAssignee {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const GH_TIMEOUT_MS = 30_000;
+const DETAIL_FETCH_CONCURRENCY = 8;
 
 /** Fields requested for the search pass (broad discovery) */
 const SEARCH_FIELDS = [
@@ -439,6 +440,33 @@ function normalizeState(raw: string): 'OPEN' | 'CLOSED' | 'MERGED' {
   }
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const limit = Math.max(1, concurrency);
+  const inFlight = new Set<Promise<void>>();
+
+  for (const item of items) {
+    const task = worker(item);
+    inFlight.add(task);
+
+    const cleanup = () => {
+      inFlight.delete(task);
+    };
+    void task.then(cleanup, cleanup);
+
+    if (inFlight.size >= limit) {
+      await Promise.race(inFlight);
+    }
+  }
+
+  await Promise.all(inFlight);
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -493,8 +521,8 @@ export async function fetchMyOpenPrs(
   // Short-circuit: only fetch detail for repos with changed PRs
   const staleRepos = findStaleRepos(repoSet, searchResults, knownPrs, prMap);
 
-  // Pass 2: Fetch full detail only for stale repos
-  const detailPromises = [...staleRepos].map(async nameWithOwner => {
+  // Pass 2: Fetch full detail only for stale repos, with bounded concurrency.
+  await runWithConcurrency([...staleRepos], DETAIL_FETCH_CONCURRENCY, async nameWithOwner => {
     try {
       const detailJson = await runGh([
         'pr',
@@ -520,8 +548,6 @@ export async function fetchMyOpenPrs(
       }
     }
   });
-
-  await Promise.all(detailPromises);
 
   return [...prMap.values()];
 }

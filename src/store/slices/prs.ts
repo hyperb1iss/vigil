@@ -8,11 +8,13 @@ export interface PrSlice {
   prStates: Map<string, PrState>;
   lastPollAt: string | null;
   isPolling: boolean;
+  pollError: string | null;
   setPrs: (prs: Map<string, PullRequest>) => void;
   setPrState: (key: string, state: PrState) => void;
   updatePr: (key: string, update: Partial<PullRequest>) => void;
   setPolling: (isPolling: boolean) => void;
   setLastPollAt: (timestamp: string) => void;
+  setPollError: (message: string | null) => void;
 }
 
 export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = set => ({
@@ -20,6 +22,7 @@ export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = set => (
   prStates: new Map(),
   lastPollAt: null,
   isPolling: false,
+  pollError: null,
 
   setPrs: prs => set({ prs }),
 
@@ -41,4 +44,5 @@ export const createPrSlice: StateCreator<VigilStore, [], [], PrSlice> = set => (
 
   setPolling: isPolling => set({ isPolling }),
   setLastPollAt: timestamp => set({ lastPollAt: timestamp }),
+  setPollError: message => set({ pollError: message }),
 });

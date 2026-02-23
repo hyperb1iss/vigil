@@ -57,6 +57,7 @@ describe('PrSlice', () => {
     expect(state.prStates.size).toBe(0);
     expect(state.lastPollAt).toBeNull();
     expect(state.isPolling).toBe(false);
+    expect(state.pollError).toBeNull();
   });
 
   test('setPrs replaces the entire PR map', () => {
@@ -115,6 +116,15 @@ describe('PrSlice', () => {
     const ts = '2026-02-18T12:00:00Z';
     store.getState().setLastPollAt(ts);
     expect(store.getState().lastPollAt).toBe(ts);
+  });
+
+  test('setPollError stores and clears polling error message', () => {
+    const store = createTestStore();
+    store.getState().setPollError('auth failed');
+    expect(store.getState().pollError).toBe('auth failed');
+
+    store.getState().setPollError(null);
+    expect(store.getState().pollError).toBeNull();
   });
 });
 

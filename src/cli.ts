@@ -21,6 +21,14 @@ import { vigilStore } from './store/index.js';
 import type { PrEvent } from './types/events.js';
 import type { Notification } from './types/store.js';
 
+const MIN_POLL_INTERVAL_MS = 5_000;
+const MAX_POLL_INTERVAL_MS = 15 * 60_000;
+
+function clampPollInterval(ms: number): number {
+  if (!Number.isFinite(ms)) return MIN_POLL_INTERVAL_MS;
+  return Math.max(MIN_POLL_INTERVAL_MS, Math.min(MAX_POLL_INTERVAL_MS, Math.floor(ms)));
+}
+
 // ─── Event → Notification mapping ────────────────────────────────────
 
 function eventToNotification(event: PrEvent): Notification | null {
@@ -159,9 +167,17 @@ async function main(): Promise<void> {
   if (argv.mode) {
     config.defaultMode = argv.mode;
   }
-  if (argv.pollInterval) {
-    config.pollIntervalMs = argv.pollInterval;
+  if (argv.pollInterval !== undefined) {
+    const clamped = clampPollInterval(argv.pollInterval);
+    if (clamped !== argv.pollInterval) {
+      console.error(
+        `[vigil] poll interval clamped to ${clamped}ms (allowed range: ${MIN_POLL_INTERVAL_MS}-${MAX_POLL_INTERVAL_MS}ms)`
+      );
+    }
+    config.pollIntervalMs = clamped;
   }
+
+  config.pollIntervalMs = clampPollInterval(config.pollIntervalMs);
 
   // Bootstrap
   ensureDirectories();

@@ -50,8 +50,13 @@ export async function poll(repos?: string[]): Promise<PrEvent[]> {
     // Update store
     store.getState().setPrs(currentMap);
     store.getState().setLastPollAt(new Date().toISOString());
+    store.getState().setPollError(null);
 
     return events;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    store.getState().setPollError(message);
+    throw error;
   } finally {
     store.getState().setPolling(false);
   }
@@ -62,8 +67,13 @@ export async function poll(repos?: string[]): Promise<PrEvent[]> {
  */
 export function startPoller(options: PollerOptions): () => void {
   const { intervalMs, repos, onEvents, onError } = options;
+  const safeIntervalMs = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 30_000;
+  let inFlight = false;
 
   async function tick(): Promise<void> {
+    if (inFlight) return;
+    inFlight = true;
+
     try {
       const events = await poll(repos);
       if (events.length > 0 && onEvents) {
@@ -71,12 +81,14 @@ export function startPoller(options: PollerOptions): () => void {
       }
     } catch (error) {
       onError?.(error);
+    } finally {
+      inFlight = false;
     }
   }
 
   // Run immediately, then on interval
   void tick();
-  pollerTimer = setInterval(() => void tick(), intervalMs);
+  pollerTimer = setInterval(() => void tick(), safeIntervalMs);
 
   return () => {
     if (pollerTimer) {

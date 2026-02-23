@@ -5,7 +5,15 @@ import { useStore } from 'zustand';
 
 import { vigilStore } from '../store/index.js';
 import type { PrState } from '../types/index.js';
-import { icons, palette, prStateColors, semantic, stateIndicators, timeAgo } from './theme.js';
+import {
+  icons,
+  palette,
+  prStateColors,
+  semantic,
+  stateIndicators,
+  timeAgo,
+  truncate,
+} from './theme.js';
 
 const ALL_STATES: PrState[] = ['hot', 'waiting', 'ready', 'blocked', 'dormant'];
 
@@ -17,6 +25,7 @@ export function StatusBar(): JSX.Element {
   const sortMode = useStore(vigilStore, s => s.sortMode);
   const isPolling = useStore(vigilStore, s => s.isPolling);
   const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
+  const pollError = useStore(vigilStore, s => s.pollError);
 
   // Tally state counts
   const counts: Record<PrState, number> = { hot: 0, waiting: 0, ready: 0, blocked: 0, dormant: 0 };
@@ -81,6 +90,10 @@ export function StatusBar(): JSX.Element {
           </Text>
           <Text color={semantic.muted}>polling</Text>
         </Box>
+      ) : pollError ? (
+        <Text color={semantic.error}>
+          {icons.cross} {truncate(pollError, 36)}
+        </Text>
       ) : lastPollAt ? (
         <Text color={semantic.muted}>
           {icons.refresh} {timeAgo(lastPollAt)}

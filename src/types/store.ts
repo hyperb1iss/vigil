@@ -21,6 +21,7 @@ export interface VigilStore {
   prStates: Map<string, PrState>;
   lastPollAt: string | null;
   isPolling: boolean;
+  pollError: string | null;
 
   // Agent activity
   activeAgents: Map<string, AgentRun>;
@@ -75,4 +76,5 @@ export interface VigilStore {
   // Polling
   setPolling: (isPolling: boolean) => void;
   setLastPollAt: (timestamp: string) => void;
+  setPollError: (message: string | null) => void;
 }
