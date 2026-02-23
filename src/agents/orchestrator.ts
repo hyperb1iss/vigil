@@ -48,7 +48,6 @@ function triageEvent(event: PrEvent): TriageResult {
       routing: 'dismiss',
       priority: 'informational',
     },
-    branch_behind: { classification: 'suggestion', routing: 'rebase', priority: 'can-wait' },
     labels_changed: { classification: 'noise', routing: 'dismiss', priority: 'informational' },
     ready_to_merge: { classification: 'nice-to-have', routing: 'respond', priority: 'can-wait' },
     became_draft: { classification: 'noise', routing: 'dismiss', priority: 'informational' },

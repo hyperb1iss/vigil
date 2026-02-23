@@ -9,7 +9,6 @@ export type EventType =
   | 'checks_changed'
   | 'conflict_detected'
   | 'conflict_resolved'
-  | 'branch_behind'
   | 'labels_changed'
   | 'ready_to_merge'
   | 'became_draft'
@@ -27,7 +26,6 @@ export type EventData =
   | ReviewSubmittedData
   | CommentAddedData
   | ChecksChangedData
-  | BranchBehindData
   | LabelsChangedData;
 
 export interface ReviewSubmittedData {
@@ -44,11 +42,6 @@ export interface ChecksChangedData {
   type: 'checks_changed';
   checks: PrCheck[];
   previousChecks: PrCheck[];
-}
-
-export interface BranchBehindData {
-  type: 'branch_behind';
-  commitsBehind: number;
 }
 
 export interface LabelsChangedData {
