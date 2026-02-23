@@ -17,6 +17,7 @@ const {
   throwClassifiedError,
   buildPrFromDetail,
   buildPrFromSearch,
+  isTransientGhFailure,
 } = _internal;
 
 // ─── normalizeAuthor ───────────────────────────────────────────────────
@@ -391,6 +392,33 @@ describe('throwClassifiedError', () => {
         expect(e.stderr).toBe('detailed error message');
       }
     }
+  });
+});
+
+// ─── Transient Failure Detection ──────────────────────────────────────
+
+describe('isTransientGhFailure', () => {
+  test('returns true for HTTP 5xx server errors', () => {
+    expect(
+      isTransientGhFailure(
+        new GhError('gh search prs failed (exit 1): HTTP 502: Server Error', 1, 'HTTP 502')
+      )
+    ).toBe(true);
+  });
+
+  test('returns true for timeout-like errors', () => {
+    expect(isTransientGhFailure(new GhError('gh timed out after 30000ms', 124, 'timeout'))).toBe(
+      true
+    );
+  });
+
+  test('returns false for auth and rate-limit errors', () => {
+    expect(isTransientGhFailure(new GhAuthError('not logged in'))).toBe(false);
+    expect(isTransientGhFailure(new GhRateLimitError('rate limit exceeded'))).toBe(false);
+  });
+
+  test('returns false for non-transient generic errors', () => {
+    expect(isTransientGhFailure(new GhError('validation failed', 1, 'bad request'))).toBe(false);
   });
 });
 

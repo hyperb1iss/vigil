@@ -151,6 +151,8 @@ interface GhAssignee {
 
 const GH_TIMEOUT_MS = 30_000;
 const DETAIL_FETCH_CONCURRENCY = 8;
+const GH_TRANSIENT_RETRIES = 3;
+const GH_RETRY_BASE_DELAY_MS = 400;
 
 /** Fields requested for the search pass (broad discovery) */
 const SEARCH_FIELDS = [
@@ -206,28 +208,96 @@ export async function runGh(args: string[]): Promise<string> {
     stderr: 'pipe',
   });
 
-  const timeoutId = setTimeout(() => {
-    proc.kill();
-  }, GH_TIMEOUT_MS);
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const processPromise = Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
 
   try {
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    // If we timeout, reject immediately even if gh never exits cleanly.
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          // best effort kill; timeout error still surfaces
+        }
+        reject(
+          new GhError(`gh ${args.join(' ')} timed out after ${GH_TIMEOUT_MS}ms`, 124, 'timeout')
+        );
+      }, GH_TIMEOUT_MS);
+    });
 
-    clearTimeout(timeoutId);
+    // Avoid unhandled rejections if timeout wins the race.
+    void processPromise.catch(() => {
+      // Swallow late process rejections after timeout races.
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.race([processPromise, timeoutPromise]);
 
     if (exitCode !== 0) {
       throwClassifiedError(exitCode, stderr, args);
     }
 
     return stdout.trim();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
+}
+
+function isTransientGhFailure(error: unknown): boolean {
+  if (error instanceof GhRateLimitError || error instanceof GhAuthError) {
+    return false;
+  }
+
+  const text =
+    error instanceof GhError
+      ? `${error.message}\n${error.stderr}`
+      : error instanceof Error
+        ? error.message
+        : String(error);
+  const lower = text.toLowerCase();
+
+  return (
+    lower.includes('timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('server error') ||
+    lower.includes('service unavailable') ||
+    lower.includes('bad gateway') ||
+    lower.includes('connection reset') ||
+    lower.includes('econnreset') ||
+    lower.includes('eai_again') ||
+    /http\s+5\d\d/.test(lower)
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function runGhWithRetry(args: string[], attempts = GH_TRANSIENT_RETRIES): Promise<string> {
+  const tries = Math.max(1, Math.floor(attempts));
+  let lastError: unknown;
+
+  for (let i = 1; i <= tries; i++) {
+    try {
+      return await runGh(args);
+    } catch (error) {
+      lastError = error;
+      const isLastAttempt = i === tries;
+      if (isLastAttempt || !isTransientGhFailure(error)) {
+        throw error;
+      }
+      const backoffMs = GH_RETRY_BASE_DELAY_MS * 2 ** (i - 1);
+      await sleep(backoffMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 /** Classify gh CLI errors into specific error types */
@@ -523,7 +593,7 @@ export async function fetchMyOpenPrs(
     }
   }
 
-  const searchJson = await runGh(searchArgs);
+  const searchJson = await runGhWithRetry(searchArgs);
   if (!searchJson) return [];
 
   const searchResults = JSON.parse(searchJson) as GhSearchPr[];
@@ -744,4 +814,5 @@ export const _internal = {
   throwClassifiedError,
   buildPrFromDetail,
   buildPrFromSearch,
+  isTransientGhFailure,
 };

@@ -13,7 +13,7 @@ import { PrRow, statePriority } from './pr-row.js';
 import { ScrollIndicator } from './scroll-indicator.js';
 import { SearchBar } from './search-bar.js';
 import { StatusBar } from './status-bar.js';
-import { icons, palette, semantic } from './theme.js';
+import { icons, palette, semantic, truncate } from './theme.js';
 
 // ─── Search Matching ─────────────────────────────────────────────
 
@@ -51,6 +51,17 @@ const CARD_HEIGHT = 7;
 // ─── Empty State ──────────────────────────────────────────────────────
 
 function EmptyState(): JSX.Element {
+  const isPolling = useStore(vigilStore, s => s.isPolling);
+  const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
+  const pollError = useStore(vigilStore, s => s.pollError);
+
+  const subtitle = pollError
+    ? `Polling failed: ${truncate(pollError, 80)}`
+    : lastPollAt
+      ? 'No open pull requests found'
+      : 'Waiting for first poll...';
+  const actionVerb = pollError ? 'retry' : 'poll';
+
   return (
     <Box flexDirection="column" alignItems="center" paddingY={2}>
       {/* Branded ASCII mark */}
@@ -81,21 +92,29 @@ function EmptyState(): JSX.Element {
 
       <Text> </Text>
 
-      <Text color={semantic.muted}>Watching your pull requests</Text>
+      <Text color={semantic.muted}>
+        {pollError ? 'GitHub polling needs attention' : 'Watching your pull requests'}
+      </Text>
 
       <Text> </Text>
 
       <Box gap={1}>
-        <Text color={palette.neonCyan}>
-          <Spinner type="dots" />
-        </Text>
-        <Text color={semantic.muted}>Waiting for first poll{'\u2026'}</Text>
+        {isPolling ? (
+          <Text color={palette.neonCyan}>
+            <Spinner type="dots" />
+          </Text>
+        ) : (
+          <Text color={pollError ? semantic.error : semantic.muted}>
+            {pollError ? icons.cross : ' '}
+          </Text>
+        )}
+        <Text color={pollError ? semantic.error : semantic.muted}>{subtitle}</Text>
       </Box>
 
       <Text> </Text>
 
       <Text color={semantic.dim}>
-        Press <Text color={palette.neonCyan}>r</Text> to poll now
+        Press <Text color={palette.neonCyan}>r</Text> to {actionVerb} now
       </Text>
     </Box>
   );
