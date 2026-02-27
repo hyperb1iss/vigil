@@ -16,6 +16,7 @@ import type {
   PrComment,
   PrLabel,
   PrReview,
+  PrReviewRequest,
   PullRequest,
   ReviewDecision,
   ReviewState,
@@ -89,6 +90,7 @@ interface GhPrDetail {
   statusCheckRollup: GhCheckRollupItem[];
   reviewRequests: GhReviewRequest[];
   assignees: GhAssignee[];
+  mergedAt?: string | null;
   author?: GhAuthor;
 }
 
@@ -149,7 +151,7 @@ interface GhAssignee {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const GH_TIMEOUT_MS = 30_000;
+const DEFAULT_GH_TIMEOUT_MS = 30_000;
 const DETAIL_FETCH_CONCURRENCY = 8;
 const GH_TRANSIENT_RETRIES = 3;
 const GH_RETRY_BASE_DELAY_MS = 400;
@@ -193,6 +195,7 @@ const DETAIL_FIELDS = [
   'changedFiles',
   'updatedAt',
   'createdAt',
+  'mergedAt',
   'author',
 ].join(',');
 
@@ -202,7 +205,7 @@ const DETAIL_FIELDS = [
  * Execute a `gh` CLI command, capture stdout, throw on non-zero exit.
  * Timeout defaults to 30s.
  */
-export async function runGh(args: string[]): Promise<string> {
+export async function runGh(args: string[], timeoutMs = DEFAULT_GH_TIMEOUT_MS): Promise<string> {
   const proc = Bun.spawn(['gh', ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -224,10 +227,8 @@ export async function runGh(args: string[]): Promise<string> {
         } catch {
           // best effort kill; timeout error still surfaces
         }
-        reject(
-          new GhError(`gh ${args.join(' ')} timed out after ${GH_TIMEOUT_MS}ms`, 124, 'timeout')
-        );
-      }, GH_TIMEOUT_MS);
+        reject(new GhError(`gh ${args.join(' ')} timed out after ${timeoutMs}ms`, 124, 'timeout'));
+      }, timeoutMs);
     });
 
     // Avoid unhandled rejections if timeout wins the race.
@@ -279,13 +280,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function runGhWithRetry(args: string[], attempts = GH_TRANSIENT_RETRIES): Promise<string> {
+export async function runGhWithRetry(
+  args: string[],
+  attempts = GH_TRANSIENT_RETRIES,
+  timeoutMs = DEFAULT_GH_TIMEOUT_MS
+): Promise<string> {
   const tries = Math.max(1, Math.floor(attempts));
   let lastError: unknown;
 
   for (let i = 1; i <= tries; i++) {
     try {
-      return await runGh(args);
+      return await runGh(args, timeoutMs);
     } catch (error) {
       lastError = error;
       const isLastAttempt = i === tries;
@@ -359,6 +364,14 @@ function normalizeComment(raw: GhCommentNode): PrComment {
     body: raw.body ?? '',
     createdAt: raw.createdAt,
     url: raw.url ?? '',
+  };
+}
+
+function normalizeReviewRequest(raw: GhReviewRequest): PrReviewRequest {
+  return {
+    login: raw.login,
+    name: raw.name,
+    slug: raw.slug,
   };
 }
 
@@ -479,11 +492,13 @@ function buildPrFromDetail(raw: GhPrDetail, nameWithOwner: string): PullRequest 
     comments: (raw.comments ?? []).map(normalizeComment),
     checks: normalizeChecks(raw.statusCheckRollup),
     labels: (raw.labels ?? []).map(normalizeLabel),
+    reviewRequests: (raw.reviewRequests ?? []).map(normalizeReviewRequest),
     additions: raw.additions ?? 0,
     deletions: raw.deletions ?? 0,
     changedFiles: raw.changedFiles ?? 0,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    mergedAt: raw.mergedAt ?? undefined,
   };
 }
 
@@ -513,6 +528,7 @@ function buildPrFromSearch(raw: GhSearchPr): PullRequest {
     comments: [],
     checks: [],
     labels: (raw.labels ?? []).map(normalizeLabel),
+    reviewRequests: [],
     additions: 0,
     deletions: 0,
     changedFiles: 0,

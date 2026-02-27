@@ -2,11 +2,13 @@ import { describe, expect, test } from 'bun:test';
 
 import { createStore } from 'zustand/vanilla';
 
+import { defaultConfig } from '../config/defaults.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PullRequest } from '../types/pr.js';
 import type { Notification, VigilStore } from '../types/store.js';
 import { createAgentSlice } from './slices/agents.js';
 import { createPrSlice } from './slices/prs.js';
+import { createRadarSlice } from './slices/radar.js';
 import { createUiSlice } from './slices/ui.js';
 
 // ─── Test Store Factory ────────────────────────────────────────────────
@@ -14,6 +16,7 @@ import { createUiSlice } from './slices/ui.js';
 function createTestStore() {
   return createStore<VigilStore>()((...a) => ({
     ...createPrSlice(...a),
+    ...createRadarSlice(...a),
     ...createAgentSlice(...a),
     ...createUiSlice(...a),
   }));
@@ -265,6 +268,7 @@ describe('UiSlice', () => {
     expect(state.view).toBe('dashboard');
     expect(state.viewMode).toBe('cards');
     expect(state.sortMode).toBe('activity');
+    expect(state.dashboardFeedMode).toBe('mine');
     expect(state.focusedPr).toBeNull();
     expect(state.selectedAction).toBe(0);
     expect(state.searchQuery).toBeNull();
@@ -318,6 +322,21 @@ describe('UiSlice', () => {
 
     store.getState().setMode('hitl');
     expect(store.getState().mode).toBe('hitl');
+  });
+
+  test('setConfig hydrates config-dependent UI defaults', () => {
+    const store = createTestStore();
+    store.getState().setConfig({
+      ...defaultConfig,
+      defaultMode: 'yolo',
+      display: {
+        ...defaultConfig.display,
+        dashboardFeedMode: 'both',
+      },
+    });
+
+    expect(store.getState().mode).toBe('yolo');
+    expect(store.getState().dashboardFeedMode).toBe('both');
   });
 
   test('setSearchQuery resets dashboard scroll on change', () => {
@@ -434,5 +453,49 @@ describe('notifications', () => {
 
     const n2 = store.getState().notifications.find(n => n.id === 'n2');
     expect(n2?.read).toBe(false);
+  });
+});
+
+describe('RadarSlice', () => {
+  test('initial radar state is empty and idle', () => {
+    const store = createTestStore();
+    const state = store.getState();
+    expect(state.radarPrs.size).toBe(0);
+    expect(state.mergedRadarPrs.size).toBe(0);
+    expect(state.radarIsPolling).toBe(false);
+    expect(state.radarLastPollAt).toBeNull();
+    expect(state.radarPollError).toBeNull();
+  });
+
+  test('setRadarPrs and setMergedRadarPrs replace maps', () => {
+    const store = createTestStore();
+    const pr = makePr();
+    const radarEntry = {
+      pr,
+      relevance: [{ tier: 'domain' as const, reason: 'Domain', matchedBy: 'infra' }],
+      topTier: 'domain' as const,
+      isMerged: false,
+    };
+    const mergedEntry = { ...radarEntry, isMerged: true };
+
+    store.getState().setRadarPrs(new Map([[pr.key, radarEntry]]));
+    store.getState().setMergedRadarPrs(new Map([[pr.key, mergedEntry]]));
+
+    expect(store.getState().radarPrs.size).toBe(1);
+    expect(store.getState().mergedRadarPrs.size).toBe(1);
+  });
+
+  test('updateRadarPr mutates nested PR payload', () => {
+    const store = createTestStore();
+    const pr = makePr({ title: 'Before' });
+    const radarEntry = {
+      pr,
+      relevance: [{ tier: 'watch' as const, reason: 'Watch', matchedBy: 'watch' }],
+      topTier: 'watch' as const,
+      isMerged: false,
+    };
+    store.getState().setRadarPrs(new Map([[pr.key, radarEntry]]));
+    store.getState().updateRadarPr(pr.key, { title: 'After' });
+    expect(store.getState().radarPrs.get(pr.key)?.pr.title).toBe('After');
   });
 });

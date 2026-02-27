@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 
 import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
+import type { DashboardFeedMode } from '../../types/radar.js';
 import type { Notification, SortMode, ViewMode, ViewName, VigilStore } from '../../types/store.js';
 
 const defaultScrollOffsets: Record<ViewName, number> = {
@@ -15,6 +16,7 @@ export interface UiSlice {
   view: ViewName;
   viewMode: ViewMode;
   sortMode: SortMode;
+  dashboardFeedMode: DashboardFeedMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
@@ -24,8 +26,11 @@ export interface UiSlice {
   setView: (view: ViewName) => void;
   setViewMode: (viewMode: ViewMode) => void;
   setSortMode: (sortMode: SortMode) => void;
+  setDashboardFeedMode: (mode: DashboardFeedMode) => void;
+  cycleDashboardFeedMode: () => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
+  setConfig: (config: VigilConfig) => void;
   setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
@@ -38,6 +43,7 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   view: 'dashboard',
   viewMode: 'cards',
   sortMode: 'activity',
+  dashboardFeedMode: defaultConfig.display.dashboardFeedMode,
   focusedPr: null,
   selectedAction: 0,
   scrollOffsets: { ...defaultScrollOffsets },
@@ -59,9 +65,39 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
       scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
     })),
 
+  setDashboardFeedMode: mode =>
+    set(prev => ({
+      dashboardFeedMode: mode,
+      focusedPr: null,
+      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+    })),
+
+  cycleDashboardFeedMode: () =>
+    set(prev => {
+      const next: DashboardFeedMode =
+        prev.dashboardFeedMode === 'mine'
+          ? 'both'
+          : prev.dashboardFeedMode === 'both'
+            ? 'incoming'
+            : 'mine';
+      return {
+        dashboardFeedMode: next,
+        focusedPr: null,
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+      };
+    }),
+
   setFocusedPr: key => set({ focusedPr: key }),
 
   setMode: mode => set({ mode }),
+
+  setConfig: config =>
+    set(prev => ({
+      config,
+      dashboardFeedMode: config.display.dashboardFeedMode,
+      mode: config.defaultMode,
+      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+    })),
 
   setSearchQuery: query =>
     set(prev => ({

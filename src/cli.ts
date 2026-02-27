@@ -11,6 +11,7 @@ import { App } from './app.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
 import { seedMockData } from './core/mock-data.js';
 import { startPoller } from './core/poller.js';
+import { type RadarChange, startRadarPoller } from './core/radar-poller.js';
 import { initKnowledgeFile } from './learning/knowledge.js';
 import {
   sendDesktopNotification,
@@ -55,6 +56,39 @@ function eventToNotification(event: PrEvent): Notification | null {
       return { ...base, message: `${event.prKey} is ready to merge`, priority: 'medium' };
     case 'comment_added':
       return { ...base, message: `New comment on ${event.prKey}`, priority: 'low' };
+    default:
+      return null;
+  }
+}
+
+function radarChangeToNotification(change: RadarChange): Notification | null {
+  const prKey = change.key;
+  const base = {
+    id: crypto.randomUUID(),
+    prKey,
+    timestamp: change.timestamp,
+    read: false,
+  };
+
+  switch (change.kind) {
+    case 'review_requested':
+      return {
+        ...base,
+        message: `Review requested: ${prKey}`,
+        priority: 'high',
+      };
+    case 'domain_pr_opened':
+      return {
+        ...base,
+        message: `New domain PR: ${prKey}`,
+        priority: 'medium',
+      };
+    case 'domain_pr_merged':
+      return {
+        ...base,
+        message: `Domain PR merged: ${prKey}`,
+        priority: 'low',
+      };
     default:
       return null;
   }
@@ -125,6 +159,54 @@ function dispatchNotifications(
   }
 }
 
+function shouldNotifyForRadarChange(
+  change: RadarChange,
+  notifications: {
+    onDirectReviewRequest: boolean;
+    onNewDomainPr: boolean;
+    onMergedDomainPr: boolean;
+  }
+): boolean {
+  switch (change.kind) {
+    case 'review_requested':
+      return notifications.onDirectReviewRequest;
+    case 'domain_pr_opened':
+      return notifications.onNewDomainPr;
+    case 'domain_pr_merged':
+      return notifications.onMergedDomainPr;
+    default:
+      return false;
+  }
+}
+
+function dispatchRadarNotifications(
+  changes: RadarChange[],
+  store: ReturnType<typeof vigilStore.getState>,
+  notifications: {
+    onDirectReviewRequest: boolean;
+    onNewDomainPr: boolean;
+    onMergedDomainPr: boolean;
+  }
+): void {
+  for (const change of changes) {
+    if (!shouldNotifyForRadarChange(change, notifications)) continue;
+    const notification = radarChangeToNotification(change);
+    if (!notification) continue;
+
+    store.addNotification(notification);
+
+    if (shouldNotifyDesktop(notification)) {
+      void sendDesktopNotification(
+        'Vigil',
+        notification.message,
+        notification.prKey,
+        shouldPlaySound(notification),
+        change.radarPr.pr.url
+      );
+    }
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -179,6 +261,7 @@ async function main(): Promise<void> {
   }
 
   config.pollIntervalMs = clampPollInterval(config.pollIntervalMs);
+  config.radar.pollIntervalMs = clampPollInterval(config.radar.pollIntervalMs);
 
   // Bootstrap
   ensureDirectories();
@@ -186,7 +269,7 @@ async function main(): Promise<void> {
 
   // Initialize store with config
   const store = vigilStore.getState();
-  store.setMode(config.defaultMode);
+  store.setConfig(config);
 
   // Demo mode — seed mock data
   if (argv.demo) {
@@ -227,6 +310,28 @@ async function main(): Promise<void> {
     },
   });
 
+  let isFirstRadarChangeBatch = true;
+  const stopRadar =
+    config.radar.enabled && config.radar.repos.length > 0
+      ? startRadarPoller({
+          intervalMs: config.radar.pollIntervalMs,
+          radarConfig: config.radar,
+          onChanges: async changes => {
+            const skipStartupRadarBatch = isFirstRadarChangeBatch;
+            isFirstRadarChangeBatch = false;
+            const shouldNotifyRadar = config.notifications.enabled && !skipStartupRadarBatch;
+            if (shouldNotifyRadar) {
+              dispatchRadarNotifications(changes, store, config.radar.notifications);
+            }
+          },
+          onError: error => {
+            if (process.env.VIGIL_DEBUG) {
+              console.error('[vigil] radar poll error:', error);
+            }
+          },
+        })
+      : undefined;
+
   const stopExecutor = startActionExecutor();
 
   // Render TUI
@@ -236,6 +341,7 @@ async function main(): Promise<void> {
     await waitUntilExit();
   } finally {
     cleanup();
+    stopRadar?.();
     stopExecutor();
   }
 }

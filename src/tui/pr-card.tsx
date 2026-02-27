@@ -8,6 +8,7 @@ import type {
   PrReview,
   PrState,
   PullRequest,
+  RadarPr,
   ReviewDecision,
 } from '../types/index.js';
 import {
@@ -138,13 +139,40 @@ interface PrCardProps {
   state: PrState;
   isFocused: boolean;
   width?: number;
+  source?: 'mine' | 'incoming' | 'merged' | undefined;
+  radar?: RadarPr | undefined;
 }
 
-export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Element {
+function sourceBadge(
+  source: 'mine' | 'incoming' | 'merged' | undefined,
+  radar: RadarPr | undefined
+): { text: string; color: string } | null {
+  if (source === 'incoming' && radar) {
+    switch (radar.topTier) {
+      case 'direct':
+        return { text: 'DIRECT', color: semantic.error };
+      case 'domain':
+        return { text: 'DOMAIN', color: semantic.warning };
+      case 'watch':
+        return { text: 'WATCH', color: palette.electricPurple };
+    }
+  }
+  if (source === 'merged') {
+    return { text: 'MERGED', color: semantic.success };
+  }
+  if (source === 'mine') {
+    return { text: 'MINE', color: palette.neonCyan };
+  }
+  return null;
+}
+
+export function PrCard({ pr, state, isFocused, width, source, radar }: PrCardProps): JSX.Element {
   const stateColor = prStateColors[state];
-  const ago = timeAgo(pr.updatedAt);
+  const ageValue = source === 'merged' ? (pr.mergedAt ?? pr.updatedAt) : pr.updatedAt;
+  const ago = timeAgo(ageValue);
   const hasBranches = pr.headRefName.length > 0;
   const hasDiff = pr.additions > 0 || pr.deletions > 0;
+  const badge = sourceBadge(source, radar);
 
   // Signal flags
   const hasCiFail = pr.checks.some(c => c.conclusion === 'FAILURE');
@@ -168,6 +196,12 @@ export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Elemen
             {'#'}
             {pr.number}
           </Text>
+          {badge && (
+            <Text color={badge.color} bold>
+              {' · '}
+              {badge.text}
+            </Text>
+          )}
         </Text>
         <Box flexGrow={1} />
         <Text>
@@ -198,6 +232,12 @@ export function PrCard({ pr, state, isFocused, width }: PrCardProps): JSX.Elemen
       {/* Row 3: Repo · branch → base */}
       <Text wrap="truncate-end">
         <Text color={palette.dimmed}>{shortRepo(pr.repository.nameWithOwner)}</Text>
+        {source !== 'mine' && (
+          <Text>
+            <Text color={palette.dimmed}>{' · '}</Text>
+            <Text color={palette.coral}>@{pr.author.login}</Text>
+          </Text>
+        )}
         {hasBranches && (
           <Text>
             <Text color={palette.dimmed}>{' · '}</Text>

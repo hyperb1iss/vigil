@@ -24,5 +24,25 @@ export const defaultConfig: VigilConfig = {
     dormantThresholdHours: 48,
     maxPrsOnDashboard: 20,
     colorScheme: 'silkcircuit',
+    dashboardFeedMode: 'mine',
+  },
+  radar: {
+    enabled: false,
+    repos: [],
+    teams: [],
+    pollIntervalMs: 60_000,
+    merged: {
+      limit: 10,
+      maxAgeHours: 48,
+      domainOnly: true,
+    },
+    notifications: {
+      onDirectReviewRequest: true,
+      onNewDomainPr: true,
+      onMergedDomainPr: false,
+    },
+    excludeBotDrafts: true,
+    excludeOwnPrs: true,
+    staleCutoffDays: 30,
   },
 };

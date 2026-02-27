@@ -5,39 +5,16 @@ import { useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 
 import { vigilStore } from '../store/index.js';
-import type { PrState, PullRequest } from '../types/index.js';
 import { AgentStatus } from './agent-status.js';
+import type { DashboardItem } from './dashboard-feed.js';
+import { buildDashboardItems, matchesPr } from './dashboard-feed.js';
 import { KeybindBar } from './keybind-bar.js';
 import { PrCard } from './pr-card.js';
-import { PrRow, statePriority } from './pr-row.js';
+import { PrRow } from './pr-row.js';
 import { ScrollIndicator } from './scroll-indicator.js';
 import { SearchBar } from './search-bar.js';
 import { StatusBar } from './status-bar.js';
 import { icons, palette, semantic, truncate } from './theme.js';
-
-// ─── Search Matching ─────────────────────────────────────────────
-
-/** Case-insensitive fuzzy match: all query chars appear in order in the target. */
-function fuzzyMatch(query: string, target: string): boolean {
-  const q = query.toLowerCase();
-  const t = target.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
-}
-
-/** Match a PR against a search query (title, number, repo, branch). */
-function matchesPr(pr: PullRequest, query: string): boolean {
-  if (query.length === 0) return true;
-  return (
-    fuzzyMatch(query, pr.title) ||
-    fuzzyMatch(query, `#${pr.number}`) ||
-    fuzzyMatch(query, pr.repository.nameWithOwner) ||
-    fuzzyMatch(query, pr.headRefName)
-  );
-}
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -52,15 +29,28 @@ const CARD_HEIGHT = 7;
 
 function EmptyState(): JSX.Element {
   const isPolling = useStore(vigilStore, s => s.isPolling);
+  const radarIsPolling = useStore(vigilStore, s => s.radarIsPolling);
   const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
+  const radarLastPollAt = useStore(vigilStore, s => s.radarLastPollAt);
   const pollError = useStore(vigilStore, s => s.pollError);
+  const radarPollError = useStore(vigilStore, s => s.radarPollError);
+  const dashboardFeedMode = useStore(vigilStore, s => s.dashboardFeedMode);
+  const usingIncoming = dashboardFeedMode === 'incoming' || dashboardFeedMode === 'both';
+  const effectivePolling = isPolling || (usingIncoming && radarIsPolling);
+  const effectiveError = pollError ?? (usingIncoming ? radarPollError : null);
+  const effectiveLastPoll =
+    usingIncoming && radarLastPollAt
+      ? lastPollAt && new Date(lastPollAt) > new Date(radarLastPollAt)
+        ? lastPollAt
+        : radarLastPollAt
+      : lastPollAt;
 
-  const subtitle = pollError
-    ? `Polling failed: ${truncate(pollError, 80)}`
-    : lastPollAt
+  const subtitle = effectiveError
+    ? `Polling failed: ${truncate(effectiveError, 80)}`
+    : effectiveLastPoll
       ? 'No open pull requests found'
       : 'Waiting for first poll...';
-  const actionVerb = pollError ? 'retry' : 'poll';
+  const actionVerb = effectiveError ? 'retry' : 'poll';
 
   return (
     <Box flexDirection="column" alignItems="center" paddingY={2}>
@@ -99,16 +89,16 @@ function EmptyState(): JSX.Element {
       <Text> </Text>
 
       <Box gap={1}>
-        {isPolling ? (
+        {effectivePolling ? (
           <Text color={palette.neonCyan}>
             <Spinner type="dots" />
           </Text>
         ) : (
-          <Text color={pollError ? semantic.error : semantic.muted}>
-            {pollError ? icons.cross : ' '}
+          <Text color={effectiveError ? semantic.error : semantic.muted}>
+            {effectiveError ? icons.cross : ' '}
           </Text>
         )}
-        <Text color={pollError ? semantic.error : semantic.muted}>{subtitle}</Text>
+        <Text color={effectiveError ? semantic.error : semantic.muted}>{subtitle}</Text>
       </Box>
 
       <Text> </Text>
@@ -129,7 +119,7 @@ function CardGrid({
   termRows,
   scrollOffset,
 }: {
-  items: Array<{ pr: PullRequest; state: PrState }>;
+  items: DashboardItem[];
   focusedPr: string | null;
   termWidth: number;
   termRows: number;
@@ -152,7 +142,7 @@ function CardGrid({
   }
 
   // Group into rows
-  const rows: Array<Array<{ pr: PullRequest; state: PrState }>> = [];
+  const rows: DashboardItem[][] = [];
   for (let i = 0; i < visible.length; i += numCols) {
     rows.push(visible.slice(i, i + numCols));
   }
@@ -161,13 +151,15 @@ function CardGrid({
     <Box flexDirection="column">
       {rows.map((row, rowIdx) => (
         <Box key={row[0]?.pr.key ?? rowIdx} gap={1}>
-          {row.map(({ pr, state }) => (
+          {row.map(item => (
             <PrCard
-              key={pr.key}
-              pr={pr}
-              state={state}
-              isFocused={pr.key === focusedPr}
+              key={item.key}
+              pr={item.pr}
+              state={item.state}
+              isFocused={item.key === focusedPr}
               width={cardWidth}
+              source={item.source}
+              radar={item.radar}
             />
           ))}
         </Box>
@@ -184,7 +176,7 @@ function ListView({
   termRows,
   scrollOffset,
 }: {
-  items: Array<{ pr: PullRequest; state: PrState }>;
+  items: DashboardItem[];
   focusedPr: string | null;
   termRows: number;
   scrollOffset: number;
@@ -198,8 +190,15 @@ function ListView({
 
   return (
     <Box flexDirection="column">
-      {visible.map(({ pr, state }) => (
-        <PrRow key={pr.key} pr={pr} state={state} isFocused={pr.key === focusedPr} />
+      {visible.map(item => (
+        <PrRow
+          key={item.key}
+          pr={item.pr}
+          state={item.state}
+          isFocused={item.key === focusedPr}
+          source={item.source}
+          radar={item.radar}
+        />
       ))}
     </Box>
   );
@@ -208,11 +207,15 @@ function ListView({
 // ─── Dashboard ────────────────────────────────────────────────────────
 
 export function Dashboard(): JSX.Element {
-  const prs = useStore(vigilStore, s => s.prs);
-  const prStates = useStore(vigilStore, s => s.prStates);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
+  const prs = useStore(vigilStore, s => s.prs);
+  const prStates = useStore(vigilStore, s => s.prStates);
+  const radarPrs = useStore(vigilStore, s => s.radarPrs);
+  const mergedRadarPrs = useStore(vigilStore, s => s.mergedRadarPrs);
+  const dashboardFeedMode = useStore(vigilStore, s => s.dashboardFeedMode);
+  const radarFilter = useStore(vigilStore, s => s.radarFilter);
   const sortMode = useStore(vigilStore, s => s.sortMode);
   const searchQuery = useStore(vigilStore, s => s.searchQuery);
 
@@ -220,22 +223,18 @@ export function Dashboard(): JSX.Element {
   const termWidth = stdout.columns ?? 80;
   const termRows = stdout.rows ?? 24;
 
-  // Sort PRs based on active sort mode
   const allSorted = useMemo(
     () =>
-      Array.from(prs.values())
-        .map(pr => ({
-          pr,
-          state: prStates.get(pr.key) ?? ('dormant' as PrState),
-        }))
-        .sort((a, b) => {
-          if (sortMode === 'state') {
-            const pri = statePriority(a.state) - statePriority(b.state);
-            if (pri !== 0) return pri;
-          }
-          return new Date(b.pr.updatedAt).getTime() - new Date(a.pr.updatedAt).getTime();
-        }),
-    [prs, prStates, sortMode]
+      buildDashboardItems({
+        prs,
+        prStates,
+        radarPrs,
+        mergedRadarPrs,
+        dashboardFeedMode,
+        radarFilter,
+        sortMode,
+      }),
+    [prs, prStates, radarPrs, mergedRadarPrs, dashboardFeedMode, radarFilter, sortMode]
   );
 
   // Apply search filter
@@ -250,7 +249,7 @@ export function Dashboard(): JSX.Element {
   // Auto-set focusedPr to first item when null and PRs exist
   useEffect(() => {
     if (!focusedPr && sorted.length > 0 && sorted[0]) {
-      setFocusedPr(sorted[0].pr.key);
+      setFocusedPr(sorted[0].key);
     }
   }, [focusedPr, sorted, setFocusedPr]);
 
@@ -259,12 +258,12 @@ export function Dashboard(): JSX.Element {
     if (searchQuery && sorted.length > 0 && sorted[0]) {
       const currentInResults = sorted.some(s => s.pr.key === focusedPr);
       if (!currentInResults) {
-        setFocusedPr(sorted[0].pr.key);
+        setFocusedPr(sorted[0].key);
       }
     }
   }, [searchQuery, sorted, focusedPr, setFocusedPr]);
 
-  const effectiveFocus = focusedPr ?? sorted[0]?.pr.key ?? null;
+  const effectiveFocus = focusedPr ?? sorted[0]?.key ?? null;
 
   // Layout math
   const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
@@ -274,7 +273,7 @@ export function Dashboard(): JSX.Element {
   const visibleCount = visibleRows * numCols;
 
   // Compute scroll offset from focused item to keep it visible
-  const focusedIdx = effectiveFocus ? sorted.findIndex(s => s.pr.key === effectiveFocus) : 0;
+  const focusedIdx = effectiveFocus ? sorted.findIndex(s => s.key === effectiveFocus) : 0;
   const focusedRow =
     numCols > 1 ? Math.floor(Math.max(0, focusedIdx) / numCols) : Math.max(0, focusedIdx);
   const totalRows = numCols > 1 ? Math.ceil(sorted.length / numCols) : sorted.length;

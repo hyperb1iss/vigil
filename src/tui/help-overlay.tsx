@@ -41,6 +41,7 @@ const HELP_GROUPS: KeyGroup[] = [
     binds: [
       { key: 'v', desc: 'Toggle cards / list' },
       { key: 's', desc: 'Toggle sort: activity / state' },
+      { key: 'm', desc: 'Cycle feed: mine / both / incoming' },
       { key: 'y', desc: 'Toggle HITL / YOLO mode' },
       { key: 'r', desc: 'Force poll refresh' },
     ],

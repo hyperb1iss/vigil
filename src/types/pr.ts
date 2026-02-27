@@ -51,6 +51,13 @@ export interface PrCheck {
   detailsUrl?: string | undefined;
 }
 
+export interface PrReviewRequest {
+  login?: string | undefined;
+  name?: string | undefined;
+  slug?: string | undefined;
+  type?: string | undefined;
+}
+
 export interface PrWorktree {
   path: string;
   branch: string;
@@ -81,10 +88,12 @@ export interface PullRequest {
   comments: PrComment[];
   checks: PrCheck[];
   labels: PrLabel[];
+  reviewRequests?: PrReviewRequest[] | undefined;
   additions: number;
   deletions: number;
   changedFiles: number;
   createdAt: string;
   updatedAt: string;
+  mergedAt?: string | undefined;
   worktree?: PrWorktree | undefined;
 }

@@ -15,6 +15,17 @@ function mergeConfig(base: VigilConfig, overrides: Partial<VigilConfig>): VigilC
     agent: { ...base.agent, ...overrides.agent },
     learning: { ...base.learning, ...overrides.learning },
     display: { ...base.display, ...overrides.display },
+    radar: {
+      ...base.radar,
+      ...overrides.radar,
+      merged: { ...base.radar.merged, ...overrides.radar?.merged },
+      notifications: {
+        ...base.radar.notifications,
+        ...overrides.radar?.notifications,
+      },
+      teams: overrides.radar?.teams ?? base.radar.teams,
+      repos: overrides.radar?.repos ?? base.radar.repos,
+    },
   };
 }
 

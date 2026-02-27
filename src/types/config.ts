@@ -1,3 +1,5 @@
+import type { DashboardFeedMode, RadarConfig } from './radar.js';
+
 export type VigilMode = 'hitl' | 'yolo';
 export type LearningBackend = 'markdown';
 export type ColorScheme = 'silkcircuit' | 'monochrome';
@@ -9,6 +11,7 @@ export interface VigilConfig {
   agent: AgentConfig;
   learning: LearningConfig;
   display: DisplayConfig;
+  radar: RadarConfig;
 }
 
 export interface NotificationConfig {
@@ -35,6 +38,7 @@ export interface DisplayConfig {
   dormantThresholdHours: number;
   maxPrsOnDashboard: number;
   colorScheme: ColorScheme;
+  dashboardFeedMode: DashboardFeedMode;
 }
 
 export type BotRole = 'code-reviewer' | 'pr-template' | 'issue-tracker';

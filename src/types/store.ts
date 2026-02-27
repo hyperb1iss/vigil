@@ -1,6 +1,7 @@
 import type { AgentRun, CompletedAction, ProposedAction } from './agents.js';
 import type { VigilConfig } from './config.js';
 import type { PrState, PullRequest } from './pr.js';
+import type { DashboardFeedMode, RadarFilter, RadarPr } from './radar.js';
 
 export type ViewName = 'dashboard' | 'detail' | 'action';
 export type ViewMode = 'cards' | 'list';
@@ -22,6 +23,12 @@ export interface VigilStore {
   lastPollAt: string | null;
   isPolling: boolean;
   pollError: string | null;
+  radarPrs: Map<string, RadarPr>;
+  mergedRadarPrs: Map<string, RadarPr>;
+  radarLastPollAt: string | null;
+  radarIsPolling: boolean;
+  radarPollError: string | null;
+  radarFilter: RadarFilter | null;
 
   // Agent activity
   activeAgents: Map<string, AgentRun>;
@@ -33,6 +40,7 @@ export interface VigilStore {
   view: ViewName;
   viewMode: ViewMode;
   sortMode: SortMode;
+  dashboardFeedMode: DashboardFeedMode;
   focusedPr: string | null;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
@@ -48,6 +56,10 @@ export interface VigilStore {
   setPrs: (prs: Map<string, PullRequest>) => void;
   setPrState: (key: string, state: PrState) => void;
   updatePr: (key: string, update: Partial<PullRequest>) => void;
+  setRadarPrs: (prs: Map<string, RadarPr>) => void;
+  setMergedRadarPrs: (prs: Map<string, RadarPr>) => void;
+  updateRadarPr: (key: string, update: Partial<PullRequest>) => void;
+  updateMergedRadarPr: (key: string, update: Partial<PullRequest>) => void;
 
   // Agent actions
   startAgentRun: (run: AgentRun) => void;
@@ -63,8 +75,11 @@ export interface VigilStore {
   setView: (view: ViewName) => void;
   setViewMode: (viewMode: ViewMode) => void;
   setSortMode: (sortMode: SortMode) => void;
+  setDashboardFeedMode: (mode: DashboardFeedMode) => void;
+  cycleDashboardFeedMode: () => void;
   setFocusedPr: (key: string | null) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
+  setConfig: (config: VigilConfig) => void;
   setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
@@ -77,4 +92,8 @@ export interface VigilStore {
   setPolling: (isPolling: boolean) => void;
   setLastPollAt: (timestamp: string) => void;
   setPollError: (message: string | null) => void;
+  setRadarPolling: (isPolling: boolean) => void;
+  setRadarLastPollAt: (timestamp: string) => void;
+  setRadarPollError: (message: string | null) => void;
+  setRadarFilter: (filter: RadarFilter | null) => void;
 }

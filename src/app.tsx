@@ -2,39 +2,75 @@ import { spawn } from 'node:child_process';
 
 import { Box, useApp, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { fetchPrDetail } from './core/github.js';
 import { poll } from './core/poller.js';
+import { pollRadar } from './core/radar-poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
 import { Dashboard } from './tui/dashboard.js';
+import { buildDashboardItems } from './tui/dashboard-feed.js';
 import { HelpOverlay } from './tui/help-overlay.js';
 import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
+import type { PullRequest } from './types/pr.js';
 
-/** Fetch full PR detail on demand if the store only has search-stub data. */
-async function fetchDetailIfNeeded(key: string): Promise<void> {
-  const pr = vigilStore.getState().prs.get(key);
-  if (!pr || pr.headRefName) return; // already enriched
+const detailFetchInFlight = new Set<string>();
+const DETAIL_PREFETCH_DEBOUNCE_MS = 150;
 
+function parsePrKey(key: string): { owner: string; repo: string; number: number } | null {
   const hashIdx = key.indexOf('#');
-  if (hashIdx === -1) return;
+  if (hashIdx === -1) return null;
   const nameWithOwner = key.slice(0, hashIdx);
   const number = Number(key.slice(hashIdx + 1));
   const slashIdx = nameWithOwner.indexOf('/');
-  if (slashIdx === -1 || Number.isNaN(number)) return;
+  if (slashIdx === -1 || Number.isNaN(number)) return null;
+  return {
+    owner: nameWithOwner.slice(0, slashIdx),
+    repo: nameWithOwner.slice(slashIdx + 1),
+    number,
+  };
+}
 
-  const owner = nameWithOwner.slice(0, slashIdx);
-  const repo = nameWithOwner.slice(slashIdx + 1);
+function getFocusedPr(key: string | null): PullRequest | undefined {
+  if (!key) return;
+  const state = vigilStore.getState();
+  return state.prs.get(key) ?? state.radarPrs.get(key)?.pr ?? state.mergedRadarPrs.get(key)?.pr;
+}
 
+/** Fetch full PR detail on demand if the store only has search-stub data. */
+async function fetchDetailIfNeeded(key: string): Promise<void> {
+  if (detailFetchInFlight.has(key)) return;
+
+  const state = vigilStore.getState();
+  const minePr = state.prs.get(key);
+  const radarPr = state.radarPrs.get(key);
+  const mergedRadarPr = state.mergedRadarPrs.get(key);
+  const pr = minePr ?? radarPr?.pr ?? mergedRadarPr?.pr;
+  if (!pr || pr.headRefName) return; // already enriched
+
+  const parsed = parsePrKey(key);
+  if (!parsed) return;
+  const { owner, repo, number } = parsed;
+
+  detailFetchInFlight.add(key);
   try {
     const detail = await fetchPrDetail(owner, repo, number);
-    vigilStore.getState().updatePr(key, detail);
+    const next = vigilStore.getState();
+    if (next.prs.has(key)) {
+      next.updatePr(key, detail);
+    } else if (next.radarPrs.has(key)) {
+      next.updateRadarPr(key, detail);
+    } else if (next.mergedRadarPrs.has(key)) {
+      next.updateMergedRadarPr(key, detail);
+    }
   } catch {
     // Poller will retry on next cycle
+  } finally {
+    detailFetchInFlight.delete(key);
   }
 }
 
@@ -64,37 +100,19 @@ export function App(): JSX.Element {
   const scrollView = useStore(vigilStore, s => s.scrollView);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
-  const prs = useStore(vigilStore, s => s.prs);
-  const prStates = useStore(vigilStore, s => s.prStates);
+  const cycleDashboardFeedMode = useStore(vigilStore, s => s.cycleDashboardFeedMode);
   const sortMode = useStore(vigilStore, s => s.sortMode);
   const setSortMode = useStore(vigilStore, s => s.setSortMode);
   const searchQuery = useStore(vigilStore, s => s.searchQuery);
   const setSearchQuery = useStore(vigilStore, s => s.setSearchQuery);
   const detailLineCount = useDetailLineCount();
   const [showHelp, setShowHelp] = useState(false);
+  const detailPrefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Get PR keys sorted to match dashboard order. */
   const getSortedKeys = useCallback((): string[] => {
-    const STATE_ORDER: Record<string, number> = {
-      hot: 0,
-      waiting: 1,
-      ready: 2,
-      blocked: 3,
-      dormant: 4,
-    };
-
-    return Array.from(prs.values())
-      .sort((a, b) => {
-        if (sortMode === 'state') {
-          const sa = prStates.get(a.key) ?? 'dormant';
-          const sb = prStates.get(b.key) ?? 'dormant';
-          const pri = (STATE_ORDER[sa] ?? 4) - (STATE_ORDER[sb] ?? 4);
-          if (pri !== 0) return pri;
-        }
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      })
-      .map(pr => pr.key);
-  }, [prs, prStates, sortMode]);
+    return buildDashboardItems(vigilStore.getState()).map(item => item.key);
+  }, []);
 
   /** Number of card columns based on terminal width. */
   const numCols = viewMode === 'cards' ? ((stdout.columns ?? 120) >= 140 ? 2 : 1) : 1;
@@ -189,10 +207,14 @@ export function App(): JSX.Element {
     }
     if (input === 'r') {
       void poll();
+      const state = vigilStore.getState();
+      if (state.config.radar.enabled) {
+        void pollRadar(state.config.radar);
+      }
       return true;
     }
     if (input === 'o') {
-      const prUrl = focusedPr ? prs.get(focusedPr)?.url : undefined;
+      const prUrl = getFocusedPr(focusedPr)?.url;
       if (prUrl) openInBrowser(prUrl);
       return true;
     }
@@ -264,6 +286,10 @@ export function App(): JSX.Element {
     }
     if (input === 's') {
       setSortMode(sortMode === 'activity' ? 'state' : 'activity');
+      return;
+    }
+    if (input === 'm') {
+      cycleDashboardFeedMode();
     }
   }
 
@@ -335,7 +361,10 @@ export function App(): JSX.Element {
         const key = sorted[idx];
         if (key !== undefined) {
           setFocusedPr(key);
-          if (key === focusedPr) setView('detail');
+          void fetchDetailIfNeeded(key);
+          if (key === focusedPr) {
+            setView('detail');
+          }
         }
       }
     },
@@ -362,17 +391,48 @@ export function App(): JSX.Element {
       if (event.button !== 0 || event.isRelease) return;
 
       if (view === 'detail') {
-        const prUrl = focusedPr ? prs.get(focusedPr)?.url : undefined;
+        const prUrl = getFocusedPr(focusedPr)?.url;
         if (prUrl) openInBrowser(prUrl);
         return;
       }
 
       if (view === 'dashboard') onDashboardClick(event);
     },
-    [view, focusedPr, prs, onMouseScroll, onDashboardClick]
+    [view, focusedPr, onMouseScroll, onDashboardClick]
   );
 
   useMouse(handleMouse);
+
+  useEffect(() => {
+    if (!focusedPr || (view !== 'dashboard' && view !== 'detail')) {
+      if (detailPrefetchTimer.current) {
+        clearTimeout(detailPrefetchTimer.current);
+        detailPrefetchTimer.current = null;
+      }
+      return;
+    }
+
+    if (detailPrefetchTimer.current) {
+      clearTimeout(detailPrefetchTimer.current);
+      detailPrefetchTimer.current = null;
+    }
+
+    if (view === 'detail') {
+      void fetchDetailIfNeeded(focusedPr);
+      return;
+    }
+
+    detailPrefetchTimer.current = setTimeout(() => {
+      void fetchDetailIfNeeded(focusedPr);
+    }, DETAIL_PREFETCH_DEBOUNCE_MS);
+
+    return () => {
+      if (detailPrefetchTimer.current) {
+        clearTimeout(detailPrefetchTimer.current);
+        detailPrefetchTimer.current = null;
+      }
+    };
+  }, [focusedPr, view]);
 
   // ─── Render ───────────────────────────────────────────────────────
 

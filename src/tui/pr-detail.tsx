@@ -1,6 +1,6 @@
 import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { vigilStore } from '../store/index.js';
@@ -824,15 +824,37 @@ function buildContentLines(pr: PullRequest, width: number): ContentLine[] {
 export function useDetailLineCount(): number {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const prs = useStore(vigilStore, s => s.prs);
+  const radarPrs = useStore(vigilStore, s => s.radarPrs);
+  const mergedRadarPrs = useStore(vigilStore, s => s.mergedRadarPrs);
   const { stdout } = useStdout();
   const termWidth = stdout.columns ?? 80;
   const contentWidth = termWidth - 2;
-  const pr = focusedPr ? prs.get(focusedPr) : undefined;
+  const pr = focusedPr
+    ? (prs.get(focusedPr) ?? radarPrs.get(focusedPr)?.pr ?? mergedRadarPrs.get(focusedPr)?.pr)
+    : undefined;
 
   return useMemo(() => {
     if (!pr) return 0;
     return buildContentLines(pr, contentWidth).length;
   }, [pr, contentWidth]);
+}
+
+function DetailPlaceholder({ message }: { message: string }): JSX.Element {
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      <Box paddingX={1}>
+        <Text>
+          <Text color={semantic.dim}>{'Esc'}</Text>
+          <Text color={semantic.dim}>{' ‹ '}</Text>
+          <Text color={semantic.muted}>Dashboard</Text>
+        </Text>
+      </Box>
+      <Box flexGrow={1} justifyContent="center" alignItems="center">
+        <Text color={semantic.muted}>{message}</Text>
+      </Box>
+      <KeybindBar />
+    </Box>
+  );
 }
 
 // ─── Main Component ─────────────────────────────────────────────────
@@ -841,15 +863,31 @@ export function PrDetail(): JSX.Element | null {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const radarPrs = useStore(vigilStore, s => s.radarPrs);
+  const mergedRadarPrs = useStore(vigilStore, s => s.mergedRadarPrs);
   const activeAgents = useStore(vigilStore, s => s.activeAgents);
   const scrollOffset = useStore(vigilStore, s => s.scrollOffsets.detail);
   const { stdout } = useStdout();
   const termWidth = stdout.columns ?? 80;
   const termRows = stdout.rows ?? 24;
   const contentWidth = termWidth - 2;
+  const cachedByKey = useRef<Map<string, PullRequest>>(new Map());
 
-  const pr = focusedPr ? prs.get(focusedPr) : undefined;
-  const state: PrState = focusedPr ? (prStates.get(focusedPr) ?? 'dormant') : 'dormant';
+  const radar = focusedPr ? (radarPrs.get(focusedPr) ?? mergedRadarPrs.get(focusedPr)) : undefined;
+  const livePr = focusedPr ? (prs.get(focusedPr) ?? radar?.pr) : undefined;
+
+  useEffect(() => {
+    if (!focusedPr || !livePr) return;
+    cachedByKey.current.set(focusedPr, livePr);
+  }, [focusedPr, livePr]);
+
+  const pr = focusedPr ? (livePr ?? cachedByKey.current.get(focusedPr)) : undefined;
+  const isRefreshing = Boolean(focusedPr && !livePr && pr);
+  const state: PrState =
+    focusedPr && pr
+      ? (prStates.get(focusedPr) ??
+        (radar?.topTier === 'direct' ? 'hot' : radar?.topTier === 'domain' ? 'waiting' : 'dormant'))
+      : 'dormant';
   const stateColor = prStateColors[state];
 
   const agentActivity = useMemo(() => {
@@ -874,7 +912,12 @@ export function PrDetail(): JSX.Element | null {
     return buildContentLines(pr, contentWidth);
   }, [pr, contentWidth]);
 
-  if (!focusedPr || !pr) return null;
+  if (!focusedPr) {
+    return <DetailPlaceholder message="No pull request selected" />;
+  }
+  if (!pr) {
+    return <DetailPlaceholder message="Loading pull request details..." />;
+  }
 
   const availableHeight = Math.max(1, termRows - headerLines.length - CHROME_LINES);
 
@@ -895,6 +938,7 @@ export function PrDetail(): JSX.Element | null {
           <Text color={palette.neonCyan}>{pr.repository.nameWithOwner}</Text>
           <Text color={semantic.dim}>{'#'}</Text>
           <Text color={palette.coral}>{pr.number}</Text>
+          {isRefreshing && <Text color={semantic.warning}> {'· refreshing...'}</Text>}
         </Text>
       </Box>
 

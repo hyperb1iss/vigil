@@ -20,12 +20,18 @@ const ALL_STATES: PrState[] = ['hot', 'waiting', 'ready', 'blocked', 'dormant'];
 export function StatusBar(): JSX.Element {
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
+  const radarPrs = useStore(vigilStore, s => s.radarPrs);
+  const mergedRadarPrs = useStore(vigilStore, s => s.mergedRadarPrs);
+  const dashboardFeedMode = useStore(vigilStore, s => s.dashboardFeedMode);
   const mode = useStore(vigilStore, s => s.mode);
   const viewMode = useStore(vigilStore, s => s.viewMode);
   const sortMode = useStore(vigilStore, s => s.sortMode);
   const isPolling = useStore(vigilStore, s => s.isPolling);
+  const radarIsPolling = useStore(vigilStore, s => s.radarIsPolling);
   const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
+  const radarLastPollAt = useStore(vigilStore, s => s.radarLastPollAt);
   const pollError = useStore(vigilStore, s => s.pollError);
+  const radarPollError = useStore(vigilStore, s => s.radarPollError);
 
   // Tally state counts
   const counts: Record<PrState, number> = { hot: 0, waiting: 0, ready: 0, blocked: 0, dormant: 0 };
@@ -35,6 +41,17 @@ export function StatusBar(): JSX.Element {
   }
 
   const totalPrs = prs.size;
+  const hasIncoming = dashboardFeedMode === 'incoming' || dashboardFeedMode === 'both';
+  const incomingCount = radarPrs.size;
+  const mergedCount = mergedRadarPrs.size;
+
+  const effectiveError = pollError ?? (hasIncoming ? radarPollError : null);
+  const effectiveLastPoll =
+    hasIncoming && radarLastPollAt
+      ? lastPollAt && new Date(lastPollAt) > new Date(radarLastPollAt)
+        ? lastPollAt
+        : radarLastPollAt
+      : lastPollAt;
 
   return (
     <Box paddingX={1}>
@@ -53,6 +70,15 @@ export function StatusBar(): JSX.Element {
 
         <Text color={semantic.dim}>{' │ '}</Text>
 
+        <Text color={semantic.muted}>
+          feed:{' '}
+          <Text color={palette.neonCyan} bold>
+            {dashboardFeedMode}
+          </Text>
+        </Text>
+
+        <Text color={semantic.dim}>{' │ '}</Text>
+
         {/* View mode + sort */}
         <Text color={semantic.muted}>{viewMode === 'cards' ? '▦ Cards' : '☰ List'}</Text>
         <Text color={semantic.dim}>{' · '}</Text>
@@ -61,21 +87,31 @@ export function StatusBar(): JSX.Element {
         <Text color={semantic.dim}>{' │ '}</Text>
 
         {/* PR state counts */}
-        {totalPrs > 0 ? (
-          ALL_STATES.map(state =>
-            counts[state] > 0 ? (
-              <Text key={state}>
-                <Text color={prStateColors[state]}>
-                  {stateIndicators[state]}
-                  {counts[state]}
+        {dashboardFeedMode === 'mine' ? (
+          totalPrs > 0 ? (
+            ALL_STATES.map(state =>
+              counts[state] > 0 ? (
+                <Text key={state}>
+                  <Text color={prStateColors[state]}>
+                    {stateIndicators[state]}
+                    {counts[state]}
+                  </Text>
+                  {'  '}
                 </Text>
-                {'  '}
-              </Text>
-            ) : null
+              ) : null
+            )
+          ) : (
+            <Text color={semantic.muted} italic>
+              No PRs
+            </Text>
           )
         ) : (
-          <Text color={semantic.muted} italic>
-            No PRs
+          <Text color={semantic.muted}>
+            mine <Text color={palette.neonCyan}>{totalPrs}</Text>
+            <Text color={semantic.dim}>{' · '}</Text>
+            incoming <Text color={palette.electricYellow}>{incomingCount}</Text>
+            <Text color={semantic.dim}>{' · '}</Text>
+            merged <Text color={semantic.success}>{mergedCount}</Text>
           </Text>
         )}
       </Text>
@@ -83,20 +119,20 @@ export function StatusBar(): JSX.Element {
       <Box flexGrow={1} />
 
       {/* Polling indicator */}
-      {isPolling ? (
+      {isPolling || (hasIncoming && radarIsPolling) ? (
         <Box gap={1}>
           <Text color={palette.neonCyan}>
             <Spinner type="dots" />
           </Text>
           <Text color={semantic.muted}>polling</Text>
         </Box>
-      ) : pollError ? (
+      ) : effectiveError ? (
         <Text color={semantic.error}>
-          {icons.cross} {truncate(pollError, 36)}
+          {icons.cross} {truncate(effectiveError, 36)}
         </Text>
-      ) : lastPollAt ? (
+      ) : effectiveLastPoll ? (
         <Text color={semantic.muted}>
-          {icons.refresh} {timeAgo(lastPollAt)}
+          {icons.refresh} {timeAgo(effectiveLastPoll)}
         </Text>
       ) : (
         <Text color={semantic.muted}>{icons.refresh} idle</Text>
