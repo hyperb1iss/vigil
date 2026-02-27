@@ -17,6 +17,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentResult, AgentRun, ProposedAction } from '../types/agents.js';
 import type { ChecksChangedData, PrEvent, ReviewSubmittedData } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
@@ -168,9 +169,27 @@ export async function runFixAgent(
   };
 
   store.startAgentRun(agentRun);
+  logAgentActivity('fix_run_start', {
+    agent: 'fix',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type, worktreePath },
+  });
 
   try {
     const prompt = buildPrompt(event, pr, worktreePath);
+    const queryMark = markAgentQuery('fix', pr.key, prompt, runId);
+    if (queryMark.repeatedWithinWindow) {
+      logAgentActivity('fix_duplicate_query_detected', {
+        agent: 'fix',
+        runId,
+        prKey: pr.key,
+        data: {
+          duplicateCount: queryMark.duplicateCount,
+          fingerprint: queryMark.fingerprint,
+        },
+      });
+    }
 
     const stream = query({
       prompt,
@@ -196,10 +215,22 @@ export async function runFixAgent(
         const text = extractAssistantText(message);
         output += text;
         store.updateAgentRun(runId, { streamingOutput: output });
+        logAgentActivity('fix_stream_chunk', {
+          agent: 'fix',
+          runId,
+          prKey: pr.key,
+          data: { chars: text.length },
+        });
       }
 
       if (message.type === 'result') {
         resultMessage = message;
+        logAgentActivity('fix_result_message', {
+          agent: 'fix',
+          runId,
+          prKey: pr.key,
+          data: { subtype: message.subtype, isError: Boolean(message.is_error) },
+        });
       }
     }
 
@@ -219,6 +250,15 @@ export async function runFixAgent(
     };
 
     store.completeAgentRun(runId, result);
+    logAgentActivity('fix_run_complete', {
+      agent: 'fix',
+      runId,
+      prKey: pr.key,
+      data: {
+        success: result.success,
+        actions: result.actions.length,
+      },
+    });
 
     return result;
   } catch (error) {
@@ -235,6 +275,12 @@ export async function runFixAgent(
       error: message,
       completedAt: new Date().toISOString(),
       result,
+    });
+    logAgentActivity('fix_run_failed', {
+      agent: 'fix',
+      runId,
+      prKey: pr.key,
+      data: { error: message },
     });
 
     return result;

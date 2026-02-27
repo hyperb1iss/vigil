@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
@@ -133,9 +134,27 @@ export async function runEvidenceAgent(
   };
 
   store.startAgentRun(agentRun);
+  logAgentActivity('evidence_run_start', {
+    agent: 'evidence',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type, hasWorktree: Boolean(worktreePath) },
+  });
 
   try {
     const prompt = buildEvidencePrompt(event, pr, worktreePath);
+    const queryMark = markAgentQuery('evidence', pr.key, prompt, runId);
+    if (queryMark.repeatedWithinWindow) {
+      logAgentActivity('evidence_duplicate_query_detected', {
+        agent: 'evidence',
+        runId,
+        prKey: pr.key,
+        data: {
+          duplicateCount: queryMark.duplicateCount,
+          fingerprint: queryMark.fingerprint,
+        },
+      });
+    }
 
     const stream = query({
       prompt,
@@ -166,11 +185,23 @@ export async function runEvidenceAgent(
           store.updateAgentRun(runId, {
             streamingOutput: (current?.streamingOutput ?? '') + text,
           });
+          logAgentActivity('evidence_stream_chunk', {
+            agent: 'evidence',
+            runId,
+            prKey: pr.key,
+            data: { chars: text.length },
+          });
         }
       }
 
       if (message.type === 'result' && message.subtype === 'success') {
         evidenceText = message.result;
+        logAgentActivity('evidence_result_message', {
+          agent: 'evidence',
+          runId,
+          prKey: pr.key,
+          data: { subtype: message.subtype },
+        });
       }
     }
 
@@ -196,6 +227,12 @@ export async function runEvidenceAgent(
       summary: 'Evidence gathered successfully.',
       actions: [action],
     });
+    logAgentActivity('evidence_run_complete', {
+      agent: 'evidence',
+      runId,
+      prKey: pr.key,
+      data: { actionId: action.id, detailChars: evidenceText.length },
+    });
 
     return action;
   } catch (error) {
@@ -204,6 +241,12 @@ export async function runEvidenceAgent(
       status: 'failed',
       error: message,
       completedAt: new Date().toISOString(),
+    });
+    logAgentActivity('evidence_run_failed', {
+      agent: 'evidence',
+      runId,
+      prKey: pr.key,
+      data: { error: message },
     });
 
     return {

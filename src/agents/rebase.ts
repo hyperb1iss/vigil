@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { fsTools } from './tools/fs.js';
 import { gitTools } from './tools/git.js';
@@ -90,8 +91,26 @@ export async function runRebaseAgent(
     streamingOutput: '',
   };
   store.startAgentRun(agentRun);
+  logAgentActivity('rebase_run_start', {
+    agent: 'rebase',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type, worktreePath },
+  });
 
   const prompt = buildPrompt(pr, event);
+  const queryMark = markAgentQuery('rebase', pr.key, prompt, runId);
+  if (queryMark.repeatedWithinWindow) {
+    logAgentActivity('rebase_duplicate_query_detected', {
+      agent: 'rebase',
+      runId,
+      prKey: pr.key,
+      data: {
+        duplicateCount: queryMark.duplicateCount,
+        fingerprint: queryMark.fingerprint,
+      },
+    });
+  }
   const collected: SDKMessage[] = [];
 
   try {
@@ -129,6 +148,12 @@ export async function runRebaseAgent(
             streamingOutput: `${agentRun.streamingOutput}${text}`,
           });
           agentRun.streamingOutput += text;
+          logAgentActivity('rebase_stream_chunk', {
+            agent: 'rebase',
+            runId,
+            prKey: pr.key,
+            data: { chars: text.length },
+          });
         }
       }
     }
@@ -151,6 +176,12 @@ export async function runRebaseAgent(
       summary,
       actions: [action],
     });
+    logAgentActivity('rebase_run_complete', {
+      agent: 'rebase',
+      runId,
+      prKey: pr.key,
+      data: { actionId: action.id },
+    });
 
     return action;
   } catch (error) {
@@ -160,6 +191,12 @@ export async function runRebaseAgent(
       status: 'failed',
       completedAt: new Date().toISOString(),
       error: message,
+    });
+    logAgentActivity('rebase_run_failed', {
+      agent: 'rebase',
+      runId,
+      prKey: pr.key,
+      data: { error: message },
     });
 
     return {

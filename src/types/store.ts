@@ -3,7 +3,7 @@ import type { VigilConfig } from './config.js';
 import type { PrState, PullRequest } from './pr.js';
 import type { DashboardFeedMode, RadarFilter, RadarPr } from './radar.js';
 
-export type ViewName = 'dashboard' | 'detail' | 'action';
+export type ViewName = 'dashboard' | 'detail' | 'action' | 'activity';
 export type ViewMode = 'cards' | 'list';
 export type SortMode = 'activity' | 'state';
 

@@ -9,6 +9,7 @@ const defaultScrollOffsets: Record<ViewName, number> = {
   dashboard: 0,
   detail: 0,
   action: 0,
+  activity: 0,
 };
 
 export interface UiSlice {

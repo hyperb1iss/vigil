@@ -1,6 +1,7 @@
 import { mergePr, postComment, runGh } from '../core/github.js';
 import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/agents.js';
+import { logAgentActivity } from './activity-log.js';
 
 const EXECUTOR_INTERVAL_MS = 1_000;
 
@@ -32,6 +33,12 @@ function requireDetail(action: ProposedAction): string {
 }
 
 export async function executeAction(action: ProposedAction): Promise<string> {
+  logAgentActivity('executor_action_start', {
+    agent: action.agent,
+    prKey: action.prKey,
+    data: { id: action.id, type: action.type },
+  });
+
   switch (action.type) {
     case 'post_comment': {
       const ref = parsePrKey(action.prKey);
@@ -85,13 +92,37 @@ export function startActionExecutor(intervalMs = EXECUTOR_INTERVAL_MS): () => vo
         .getState()
         .actionQueue.filter(action => action.status === 'approved');
 
+      logAgentActivity('executor_tick', {
+        data: {
+          approvedCount: approved.length,
+        },
+      });
+
       for (const action of approved) {
         try {
           const output = await executeAction(action);
           vigilStore.getState().markActionExecuted(action.id, output);
+          logAgentActivity('executor_action_success', {
+            agent: action.agent,
+            prKey: action.prKey,
+            data: {
+              id: action.id,
+              type: action.type,
+              output: output.slice(0, 200),
+            },
+          });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           vigilStore.getState().markActionFailed(action.id, message);
+          logAgentActivity('executor_action_failed', {
+            agent: action.agent,
+            prKey: action.prKey,
+            data: {
+              id: action.id,
+              type: action.type,
+              error: message,
+            },
+          });
         }
       }
     } finally {

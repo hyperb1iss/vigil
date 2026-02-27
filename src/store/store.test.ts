@@ -204,6 +204,16 @@ describe('AgentSlice', () => {
     expect(store.getState().actionQueue[0]?.status).toBe('pending');
   });
 
+  test('enqueueAction skips duplicates that are still pending/approved', () => {
+    const store = createTestStore();
+    const action = makeAction({ id: 'dup-1', type: 'post_comment', agent: 'respond' });
+    store.getState().enqueueAction(action);
+    store.getState().enqueueAction({ ...action, id: 'dup-2' });
+
+    expect(store.getState().actionQueue).toHaveLength(1);
+    expect(store.getState().actionQueue[0]?.id).toBe('dup-1');
+  });
+
   test('approveAction sets approved status', () => {
     const store = createTestStore();
     store.getState().enqueueAction(makeAction());
@@ -223,7 +233,9 @@ describe('AgentSlice', () => {
   test('approve/reject only affects target action', () => {
     const store = createTestStore();
     store.getState().enqueueAction(makeAction({ id: 'a1' }));
-    store.getState().enqueueAction(makeAction({ id: 'a2' }));
+    store
+      .getState()
+      .enqueueAction(makeAction({ id: 'a2', type: 'post_comment', agent: 'respond' }));
     store.getState().approveAction('a1');
 
     expect(store.getState().actionQueue[0]?.status).toBe('approved');

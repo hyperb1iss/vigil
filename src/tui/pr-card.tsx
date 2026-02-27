@@ -173,6 +173,8 @@ export function PrCard({ pr, state, isFocused, width, source, radar }: PrCardPro
   const hasBranches = pr.headRefName.length > 0;
   const hasDiff = pr.additions > 0 || pr.deletions > 0;
   const badge = sourceBadge(source, radar);
+  const cardWidth = width ?? 72;
+  const statusWidth = Math.max(12, Math.min(24, Math.floor((cardWidth - 4) * 0.4)));
 
   // Signal flags
   const hasCiFail = pr.checks.some(c => c.conclusion === 'FAILURE');
@@ -188,40 +190,43 @@ export function PrCard({ pr, state, isFocused, width, source, radar }: PrCardPro
     >
       {/* Row 1: State + Number (left) ── Flags + Age (right) */}
       <Box>
-        <Text>
-          <Text>{stateIndicators[state]}</Text>
-          <Text color={stateColor}> {stateLabels[state]}</Text>
-          <Text color={semantic.dim}>{' · '}</Text>
-          <Text color={palette.neonCyan}>
-            {'#'}
-            {pr.number}
+        <Box flexGrow={1} minWidth={0}>
+          <Text wrap="truncate-end">
+            <Text>{stateIndicators[state]}</Text>
+            <Text color={stateColor}> {stateLabels[state]}</Text>
+            <Text color={semantic.dim}>{' · '}</Text>
+            <Text color={palette.neonCyan}>
+              {'#'}
+              {pr.number}
+            </Text>
+            {badge && (
+              <Text color={badge.color} bold>
+                {' · '}
+                {badge.text}
+              </Text>
+            )}
           </Text>
-          {badge && (
-            <Text color={badge.color} bold>
-              {' · '}
-              {badge.text}
-            </Text>
-          )}
-        </Text>
-        <Box flexGrow={1} />
-        <Text>
-          {hasCiFail && (
-            <Text color={semantic.error} bold>
-              {'CI FAIL '}
-            </Text>
-          )}
-          {hasChangesRequested && (
-            <Text color={palette.coral} bold>
-              {'CHANGES '}
-            </Text>
-          )}
-          {pr.isDraft && <Text color={palette.electricPurple}>{'DRAFT '}</Text>}
-          {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>{'CONFLICT '}</Text>}
-          {pr.mergeable === 'MERGEABLE' && !hasCiFail && !hasChangesRequested && (
-            <Text color={semantic.success}>{'✓ '}</Text>
-          )}
-          <Text color={semantic.muted}>{ago}</Text>
-        </Text>
+        </Box>
+        <Box width={statusWidth} minWidth={0} justifyContent="flex-end">
+          <Text wrap="truncate-end">
+            {hasCiFail && (
+              <Text color={semantic.error} bold>
+                {'CI FAIL '}
+              </Text>
+            )}
+            {hasChangesRequested && (
+              <Text color={palette.coral} bold>
+                {'CHANGES '}
+              </Text>
+            )}
+            {pr.isDraft && <Text color={palette.electricPurple}>{'DRAFT '}</Text>}
+            {pr.mergeable === 'CONFLICTING' && <Text color={semantic.error}>{'CONFLICT '}</Text>}
+            {pr.mergeable === 'MERGEABLE' && !hasCiFail && !hasChangesRequested && (
+              <Text color={semantic.success}>{'✓ '}</Text>
+            )}
+            <Text color={semantic.muted}>{ago}</Text>
+          </Text>
+        </Box>
       </Box>
 
       {/* Row 2: Title (hero — full width, always bold) */}

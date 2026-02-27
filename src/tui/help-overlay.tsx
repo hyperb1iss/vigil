@@ -40,6 +40,7 @@ const HELP_GROUPS: KeyGroup[] = [
     color: palette.electricYellow,
     binds: [
       { key: 'v', desc: 'Toggle cards / list' },
+      { key: 'x', desc: 'Toggle activity panel' },
       { key: 's', desc: 'Toggle sort: activity / state' },
       { key: 'm', desc: 'Cycle feed: mine / both / incoming' },
       { key: 'y', desc: 'Toggle HITL / YOLO mode' },
@@ -56,6 +57,17 @@ const HELP_GROUPS: KeyGroup[] = [
       { key: 'g / G', desc: 'Top / bottom' },
       { key: 'a', desc: 'Open action panel' },
       { key: 'o', desc: 'Open PR in browser' },
+    ],
+  },
+  {
+    title: 'Activity View',
+    color: palette.successGreen,
+    binds: [
+      { key: '↑ / ↓', desc: 'Scroll log lines' },
+      { key: 'Tab', desc: 'Page down' },
+      { key: 'Shift+Tab', desc: 'Page up' },
+      { key: 'g / G', desc: 'Top / bottom' },
+      { key: 'x', desc: 'Back to dashboard' },
     ],
   },
   {

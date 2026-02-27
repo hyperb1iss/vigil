@@ -10,6 +10,7 @@ import { poll } from './core/poller.js';
 import { pollRadar } from './core/radar-poller.js';
 import { vigilStore } from './store/index.js';
 import { ActionPanel } from './tui/action-panel.js';
+import { ActivityPanel } from './tui/activity-panel.js';
 import { Dashboard } from './tui/dashboard.js';
 import { buildDashboardItems } from './tui/dashboard-feed.js';
 import { HelpOverlay } from './tui/help-overlay.js';
@@ -191,39 +192,49 @@ export function App(): JSX.Element {
     }
   }
 
+  const onGlobalCommand = useCallback(
+    (input: string): boolean => {
+      switch (input) {
+        case '?':
+          setShowHelp(true);
+          return true;
+        case 'q':
+          exit();
+          return true;
+        case 'y':
+          setMode(mode === 'hitl' ? 'yolo' : 'hitl');
+          return true;
+        case 'r': {
+          void poll();
+          const state = vigilStore.getState();
+          if (state.config.radar.enabled) {
+            void pollRadar(state.config.radar);
+          }
+          return true;
+        }
+        case 'o': {
+          const prUrl = getFocusedPr(focusedPr)?.url;
+          if (prUrl) openInBrowser(prUrl);
+          return true;
+        }
+        case 'x':
+          setSearchQuery(null);
+          setView(view === 'activity' ? 'dashboard' : 'activity');
+          return true;
+        default:
+          return false;
+      }
+    },
+    [exit, focusedPr, mode, setMode, setSearchQuery, setView, view]
+  );
+
   /** Handle keys that work globally regardless of view. Returns true if handled. */
   function onGlobalKey(input: string, key: { tab: boolean; escape: boolean }): boolean {
-    if (input === '?') {
-      setShowHelp(true);
-      return true;
-    }
-    if (input === 'q') {
-      exit();
-      return true;
-    }
-    if (input === 'y') {
-      setMode(mode === 'hitl' ? 'yolo' : 'hitl');
-      return true;
-    }
-    if (input === 'r') {
-      void poll();
-      const state = vigilStore.getState();
-      if (state.config.radar.enabled) {
-        void pollRadar(state.config.radar);
-      }
-      return true;
-    }
-    if (input === 'o') {
-      const prUrl = getFocusedPr(focusedPr)?.url;
-      if (prUrl) openInBrowser(prUrl);
-      return true;
-    }
-    if (key.escape && view !== 'dashboard') {
-      setSearchQuery(null);
-      setView('dashboard');
-      return true;
-    }
-    return false;
+    if (onGlobalCommand(input)) return true;
+    if (!key.escape || view === 'dashboard') return false;
+    setSearchQuery(null);
+    setView('dashboard');
+    return true;
   }
 
   /** Resolve directional input to a focus delta. Returns 0 if not a nav key. */
@@ -447,6 +458,7 @@ export function App(): JSX.Element {
           {view === 'dashboard' && <Dashboard />}
           {view === 'detail' && <PrDetail />}
           {view === 'action' && <ActionPanel />}
+          {view === 'activity' && <ActivityPanel />}
         </>
       )}
     </Box>

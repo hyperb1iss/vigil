@@ -5,6 +5,7 @@ import React from 'react';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
+import { getAgentLogPath, logAgentActivity } from './agents/activity-log.js';
 import { startActionExecutor } from './agents/executor.js';
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
@@ -267,6 +268,18 @@ async function main(): Promise<void> {
   ensureDirectories();
   initKnowledgeFile();
 
+  const agentLogPath = getAgentLogPath();
+  logAgentActivity('vigil_startup', {
+    data: {
+      pollIntervalMs: config.pollIntervalMs,
+      radarEnabled: config.radar.enabled,
+      radarPollIntervalMs: config.radar.pollIntervalMs,
+      mode: config.defaultMode,
+      agentLogPath,
+    },
+  });
+  console.error(`[vigil] agent activity log: ${agentLogPath}`);
+
   // Initialize store with config
   const store = vigilStore.getState();
   store.setConfig(config);
@@ -279,6 +292,9 @@ async function main(): Promise<void> {
   // Wire up events — skip notifications on the first poll (initial load)
   let isFirstPoll = true;
   const onEvents = async (events: PrEvent[]): Promise<void> => {
+    logAgentActivity('poller_events_received', {
+      data: { count: events.length, isFirstPoll },
+    });
     const isStartupPoll = isFirstPoll;
     const skipNotifs = isStartupPoll;
     const skipAgents = isStartupPoll && SKIP_STARTUP_EVENTS;
@@ -292,7 +308,16 @@ async function main(): Promise<void> {
 
     // Route to agent orchestrator (unless --no-agents)
     if (!argv.noAgents && !skipAgents) {
+      logAgentActivity('orchestrator_dispatch', {
+        data: { count: events.length },
+      });
       await handleEvents(events);
+      logAgentActivity('orchestrator_dispatch_complete', {
+        data: {
+          queueSize: store.actionQueue.length,
+          historySize: store.actionHistory.length,
+        },
+      });
     }
   };
 

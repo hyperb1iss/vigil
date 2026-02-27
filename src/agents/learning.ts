@@ -13,6 +13,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 
 // ─── Knowledge MCP Tools ─────────────────────────────────────────────────────
@@ -137,9 +138,27 @@ export async function runLearningAgent(event: PrEvent, pr: PullRequest): Promise
   };
 
   store.startAgentRun(agentRun);
+  logAgentActivity('learning_run_start', {
+    agent: 'learning',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type },
+  });
 
   try {
     const prompt = buildPrompt(event, pr);
+    const queryMark = markAgentQuery('learning', pr.key, prompt, runId);
+    if (queryMark.repeatedWithinWindow) {
+      logAgentActivity('learning_duplicate_query_detected', {
+        agent: 'learning',
+        runId,
+        prKey: pr.key,
+        data: {
+          duplicateCount: queryMark.duplicateCount,
+          fingerprint: queryMark.fingerprint,
+        },
+      });
+    }
 
     const conversation = query({
       prompt,
@@ -164,6 +183,12 @@ export async function runLearningAgent(event: PrEvent, pr: PullRequest): Promise
           if (block.type === 'text') {
             output += block.text;
             store.updateAgentRun(runId, { streamingOutput: output });
+            logAgentActivity('learning_stream_chunk', {
+              agent: 'learning',
+              runId,
+              prKey: pr.key,
+              data: { chars: block.text.length },
+            });
           }
         }
       }
@@ -174,12 +199,24 @@ export async function runLearningAgent(event: PrEvent, pr: PullRequest): Promise
       summary: 'Knowledge base updated with patterns from PR lifecycle.',
       actions: [],
     });
+    logAgentActivity('learning_run_complete', {
+      agent: 'learning',
+      runId,
+      prKey: pr.key,
+      data: { outputChars: output.length },
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     store.updateAgentRun(runId, {
       status: 'failed',
       completedAt: new Date().toISOString(),
       error: errorMessage,
+    });
+    logAgentActivity('learning_run_failed', {
+      agent: 'learning',
+      runId,
+      prKey: pr.key,
+      data: { error: errorMessage },
     });
   }
 }

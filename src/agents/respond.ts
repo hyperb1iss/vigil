@@ -13,6 +13,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { githubTools } from './tools/github.js';
 
@@ -115,9 +116,27 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
   };
 
   store.startAgentRun(agentRun);
+  logAgentActivity('respond_run_start', {
+    agent: 'respond',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type },
+  });
 
   try {
     const prompt = buildPrompt(event, pr);
+    const queryMark = markAgentQuery('respond', pr.key, prompt, runId);
+    if (queryMark.repeatedWithinWindow) {
+      logAgentActivity('respond_duplicate_query_detected', {
+        agent: 'respond',
+        runId,
+        prKey: pr.key,
+        data: {
+          duplicateCount: queryMark.duplicateCount,
+          fingerprint: queryMark.fingerprint,
+        },
+      });
+    }
     let resultText = '';
 
     const conversation = query({
@@ -147,6 +166,12 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
         }
         store.updateAgentRun(runId, { streamingOutput: text });
         resultText = text;
+        logAgentActivity('respond_stream_chunk', {
+          agent: 'respond',
+          runId,
+          prKey: pr.key,
+          data: { chars: text.length },
+        });
       }
 
       if (message.type === 'result') {
@@ -154,6 +179,12 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
         if (resultMsg.subtype === 'success') {
           resultText = resultMsg.result || resultText;
         }
+        logAgentActivity('respond_result_message', {
+          agent: 'respond',
+          runId,
+          prKey: pr.key,
+          data: { subtype: resultMsg.subtype, isError: Boolean(resultMsg.is_error) },
+        });
       }
     }
 
@@ -173,6 +204,12 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
       summary: `Drafted response for ${pr.key}`,
       actions: [action],
     });
+    logAgentActivity('respond_run_complete', {
+      agent: 'respond',
+      runId,
+      prKey: pr.key,
+      data: { actionId: action.id, detailChars: resultText.length },
+    });
 
     return action;
   } catch (error) {
@@ -183,6 +220,12 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
       actions: [],
     });
     store.updateAgentRun(runId, { status: 'failed', error: message });
+    logAgentActivity('respond_run_failed', {
+      agent: 'respond',
+      runId,
+      prKey: pr.key,
+      data: { error: message },
+    });
 
     return {
       id: crypto.randomUUID(),

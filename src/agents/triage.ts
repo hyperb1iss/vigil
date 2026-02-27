@@ -14,6 +14,7 @@ import { vigilStore } from '../store/index.js';
 import type { AgentRun, TriageResult } from '../types/agents.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
+import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 
 interface TextBlock {
@@ -199,9 +200,27 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
   };
 
   store.startAgentRun(agentRun);
+  logAgentActivity('triage_run_start', {
+    agent: 'triage',
+    runId,
+    prKey: pr.key,
+    data: { eventType: event.type },
+  });
 
   try {
     const prompt = buildTriagePrompt(event, pr);
+    const queryMark = markAgentQuery('triage', pr.key, prompt, runId);
+    if (queryMark.repeatedWithinWindow) {
+      logAgentActivity('triage_duplicate_query_detected', {
+        agent: 'triage',
+        runId,
+        prKey: pr.key,
+        data: {
+          duplicateCount: queryMark.duplicateCount,
+          fingerprint: queryMark.fingerprint,
+        },
+      });
+    }
 
     const stream = query({
       prompt,
@@ -236,12 +255,24 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
           store.updateAgentRun(runId, {
             streamingOutput: (current?.streamingOutput ?? '') + text,
           });
+          logAgentActivity('triage_stream_chunk', {
+            agent: 'triage',
+            runId,
+            prKey: pr.key,
+            data: { chars: text.length },
+          });
         }
       }
 
       // Extract structured output from result
       if (message.type === 'result' && message.subtype === 'success' && message.structured_output) {
         resultPayload = message.structured_output as TriageResult;
+        logAgentActivity('triage_result_message', {
+          agent: 'triage',
+          runId,
+          prKey: pr.key,
+          data: { subtype: message.subtype },
+        });
       }
     }
 
@@ -267,6 +298,16 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
       summary: resultPayload.reasoning,
       actions: [],
     });
+    logAgentActivity('triage_run_complete', {
+      agent: 'triage',
+      runId,
+      prKey: pr.key,
+      data: {
+        classification: resultPayload.classification,
+        routing: resultPayload.routing,
+        priority: resultPayload.priority,
+      },
+    });
 
     return resultPayload;
   } catch (error) {
@@ -275,6 +316,12 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
       status: 'failed',
       error: message,
       completedAt: new Date().toISOString(),
+    });
+    logAgentActivity('triage_run_failed', {
+      agent: 'triage',
+      runId,
+      prKey: pr.key,
+      data: { error: message },
     });
 
     // Return a safe fallback on error so callers always get a result

@@ -15,6 +15,7 @@ const DASHBOARD_BINDS: Keybind[] = [
   { key: 'Tab', label: 'next' },
   { key: '↵', label: 'detail' },
   { key: '/', label: 'search' },
+  { key: 'x', label: 'activity' },
   { key: 's', label: 'sort' },
   { key: 'm', label: 'feed' },
   { key: 'v', label: 'view' },
@@ -29,6 +30,7 @@ const DETAIL_BINDS: Keybind[] = [
   { key: '↑↓', label: 'scroll' },
   { key: 'Tab', label: 'page' },
   { key: 'a', label: 'actions' },
+  { key: 'x', label: 'activity' },
   { key: 'o', label: 'open' },
   { key: '?', label: 'help' },
   { key: 'q', label: 'quit' },
@@ -38,7 +40,19 @@ const ACTION_BINDS: Keybind[] = [
   { key: '1-9', label: 'approve' },
   { key: 'a', label: 'approve all' },
   { key: 'n', label: 'skip' },
+  { key: 'x', label: 'activity' },
   { key: 'Esc', label: 'back' },
+];
+
+const ACTIVITY_BINDS: Keybind[] = [
+  { key: 'Esc', label: 'back' },
+  { key: '↑↓', label: 'scroll' },
+  { key: 'Tab', label: 'page' },
+  { key: 'g/G', label: 'top/bot' },
+  { key: 'x', label: 'dashboard' },
+  { key: 'r', label: 'refresh' },
+  { key: '?', label: 'help' },
+  { key: 'q', label: 'quit' },
 ];
 
 // Purple → Cyan gradient across the SilkCircuit spectrum
@@ -71,7 +85,13 @@ export function KeybindBar(): JSX.Element {
   const termWidth = stdout.columns ?? 80;
 
   const binds =
-    view === 'action' ? ACTION_BINDS : view === 'detail' ? DETAIL_BINDS : DASHBOARD_BINDS;
+    view === 'action'
+      ? ACTION_BINDS
+      : view === 'detail'
+        ? DETAIL_BINDS
+        : view === 'activity'
+          ? ACTIVITY_BINDS
+          : DASHBOARD_BINDS;
 
   return (
     <Box flexDirection="column">
