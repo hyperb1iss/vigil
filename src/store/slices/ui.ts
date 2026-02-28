@@ -22,6 +22,7 @@ export interface UiSlice {
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
   searchQuery: string | null;
+  showVerboseLogs: boolean;
   notifications: Notification[];
   config: VigilConfig;
   setView: (view: ViewName) => void;
@@ -35,6 +36,7 @@ export interface UiSlice {
   setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
+  toggleVerboseLogs: () => void;
   addNotification: (n: Notification) => void;
   markRead: (id: string) => void;
 }
@@ -49,6 +51,7 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   selectedAction: 0,
   scrollOffsets: { ...defaultScrollOffsets },
   searchQuery: null,
+  showVerboseLogs: false,
   notifications: [],
   config: defaultConfig,
 
@@ -119,6 +122,8 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
     set(prev => ({
       scrollOffsets: { ...prev.scrollOffsets, [view]: 0 },
     })),
+
+  toggleVerboseLogs: () => set(prev => ({ showVerboseLogs: !prev.showVerboseLogs })),
 
   addNotification: n =>
     set(prev => ({

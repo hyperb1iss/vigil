@@ -45,6 +45,7 @@ export interface VigilStore {
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
   searchQuery: string | null; // null = inactive, string = active filter
+  showVerboseLogs: boolean;
 
   // Notifications
   notifications: Notification[];
@@ -83,6 +84,7 @@ export interface VigilStore {
   setSearchQuery: (query: string | null) => void;
   scrollView: (view: ViewName, delta: number, max: number, visible?: number) => void;
   resetScroll: (view: ViewName) => void;
+  toggleVerboseLogs: () => void;
 
   // Notifications
   addNotification: (n: Notification) => void;

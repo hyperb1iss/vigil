@@ -67,6 +67,7 @@ const HELP_GROUPS: KeyGroup[] = [
       { key: 'Tab', desc: 'Page down' },
       { key: 'Shift+Tab', desc: 'Page up' },
       { key: 'g / G', desc: 'Top / bottom' },
+      { key: 'f', desc: 'Toggle verbose logs' },
       { key: 'x', desc: 'Back to dashboard' },
     ],
   },

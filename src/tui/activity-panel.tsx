@@ -20,6 +20,13 @@ const LOG_TAIL_LIMIT = 400;
 /** status bar + divider + keybind divider + keybind row + panel header/meta */
 const CHROME_LINES = 6;
 
+/** Events that are noise unless verbose mode is on */
+const VERBOSE_EVENTS = new Set([
+  'executor_tick',
+  'orchestrator_dispatch',
+  'orchestrator_dispatch_complete',
+]);
+
 function eventColor(event: string): string {
   if (event.includes('failed') || event.includes('error')) return semantic.error;
   if (event.includes('skipped')) return semantic.warning;
@@ -129,6 +136,8 @@ export function ActivityPanel(): JSX.Element {
   const actionHistory = useStore(vigilStore, s => s.actionHistory);
   const scrollOffset = useStore(vigilStore, s => s.scrollOffsets.activity);
   const scrollView = useStore(vigilStore, s => s.scrollView);
+  const showVerboseLogs = useStore(vigilStore, s => s.showVerboseLogs);
+  const toggleVerboseLogs = useStore(vigilStore, s => s.toggleVerboseLogs);
   const { stdout } = useStdout();
   const termRows = stdout.rows ?? 24;
   const termWidth = stdout.columns ?? 80;
@@ -149,6 +158,11 @@ export function ActivityPanel(): JSX.Element {
     return () => clearInterval(timer);
   }, []);
 
+  const filteredEntries = useMemo(
+    () => (showVerboseLogs ? entries : entries.filter(e => !VERBOSE_EVENTS.has(e.event))),
+    [entries, showVerboseLogs]
+  );
+
   const running = useMemo(
     () => Array.from(activeAgents.values()).filter(run => run.status === 'running'),
     [activeAgents]
@@ -161,43 +175,47 @@ export function ActivityPanel(): JSX.Element {
     const prevLen = previousLenRef.current;
     const prevMaxOffset = Math.max(0, prevLen - visibleRows);
     const atTail = scrollOffset >= Math.max(0, prevMaxOffset - 1);
-    const maxOffset = Math.max(0, entries.length - visibleRows);
+    const maxOffset = Math.max(0, filteredEntries.length - visibleRows);
 
     if (
       scrollOffset > maxOffset ||
-      (entries.length > prevLen && atTail && scrollOffset !== maxOffset)
+      (filteredEntries.length > prevLen && atTail && scrollOffset !== maxOffset)
     ) {
       vigilStore.setState(prev => ({
         scrollOffsets: { ...prev.scrollOffsets, activity: maxOffset },
       }));
     }
 
-    previousLenRef.current = entries.length;
-  }, [entries.length, scrollOffset, visibleRows]);
+    previousLenRef.current = filteredEntries.length;
+  }, [filteredEntries.length, scrollOffset, visibleRows]);
 
   useInput((input, key) => {
+    if (input === 'f') {
+      toggleVerboseLogs();
+      return;
+    }
     if (input === 'j' || key.downArrow) {
-      scrollView('activity', 1, entries.length, visibleRows);
+      scrollView('activity', 1, filteredEntries.length, visibleRows);
       return;
     }
     if (input === 'k' || key.upArrow) {
-      scrollView('activity', -1, entries.length, visibleRows);
+      scrollView('activity', -1, filteredEntries.length, visibleRows);
       return;
     }
     if (key.tab) {
-      scrollView('activity', key.shift ? -10 : 10, entries.length, visibleRows);
+      scrollView('activity', key.shift ? -10 : 10, filteredEntries.length, visibleRows);
       return;
     }
     if (input === 'g') {
-      scrollView('activity', -entries.length, entries.length, visibleRows);
+      scrollView('activity', -filteredEntries.length, filteredEntries.length, visibleRows);
       return;
     }
     if (input === 'G') {
-      scrollView('activity', entries.length, entries.length, visibleRows);
+      scrollView('activity', filteredEntries.length, filteredEntries.length, visibleRows);
     }
   });
 
-  const visibleEntries = entries.slice(scrollOffset, scrollOffset + visibleRows);
+  const visibleEntries = filteredEntries.slice(scrollOffset, scrollOffset + visibleRows);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -219,7 +237,9 @@ export function ActivityPanel(): JSX.Element {
             {icons.bolt} Agent Activity
           </Text>
           <Text color={semantic.muted}>
-            ({running.length} running · {entries.length} log lines)
+            ({running.length} running · {filteredEntries.length}
+            {filteredEntries.length !== entries.length ? ` of ${entries.length}` : ''} log lines
+            {' · '}verbose: {showVerboseLogs ? 'on' : 'off'})
           </Text>
         </Box>
         <Text color={semantic.dim} wrap="truncate-end">
@@ -270,7 +290,11 @@ export function ActivityPanel(): JSX.Element {
         )}
       </Box>
 
-      <ScrollIndicator current={scrollOffset} total={entries.length} visible={visibleRows} />
+      <ScrollIndicator
+        current={scrollOffset}
+        total={filteredEntries.length}
+        visible={visibleRows}
+      />
       <KeybindBar />
     </Box>
   );

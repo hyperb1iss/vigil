@@ -18,9 +18,9 @@ import { icons, palette, semantic, truncate } from './theme.js';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-/** Lines reserved for chrome: status bar (1) + divider (1) + scroll indicator (1) + keybind bar (1) */
-const CHROME_LINES_CARD = 4;
-const CHROME_LINES_LIST = 4;
+/** Lines reserved for chrome: status bar (1) + divider (1) + scroll indicator (1) + agent status (1) + keybind separator (1) + keybind text (1) */
+const CHROME_LINES_CARD = 6;
+const CHROME_LINES_LIST = 6;
 
 /** Approximate height of a single card (border + 4-5 content rows) */
 const CARD_HEIGHT = 7;

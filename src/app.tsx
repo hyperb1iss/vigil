@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { Box, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -15,9 +15,13 @@ import { Dashboard } from './tui/dashboard.js';
 import { buildDashboardItems } from './tui/dashboard-feed.js';
 import { HelpOverlay } from './tui/help-overlay.js';
 import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
+import { icons, palette, semantic } from './tui/theme.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
 import type { PullRequest } from './types/pr.js';
+
+const MIN_COLS = 80;
+const MIN_ROWS = 24;
 
 const detailFetchInFlight = new Set<string>();
 const DETAIL_PREFETCH_DEBOUNCE_MS = 150;
@@ -88,6 +92,31 @@ const HEADER_LINES = 2;
 const CARD_HEIGHT = 7;
 /** List row height (unfocused) */
 const LIST_ROW_HEIGHT = 1;
+
+function TooSmall({ cols, rows }: { cols: number; rows: number }): JSX.Element {
+  return (
+    <Box flexDirection="column" alignItems="center" justifyContent="center" height={rows}>
+      <Text color={palette.electricPurple} bold>
+        {icons.conflict} Terminal Too Small
+      </Text>
+      <Text> </Text>
+      <Text color={semantic.muted}>
+        Current:{' '}
+        <Text color={semantic.error}>
+          {cols}x{rows}
+        </Text>
+      </Text>
+      <Text color={semantic.muted}>
+        Required:{' '}
+        <Text color={palette.neonCyan}>
+          {MIN_COLS}x{MIN_ROWS}
+        </Text>
+      </Text>
+      <Text> </Text>
+      <Text color={semantic.dim}>Resize your terminal to continue</Text>
+    </Box>
+  );
+}
 
 export function App(): JSX.Element {
   const { exit } = useApp();
@@ -448,6 +477,11 @@ export function App(): JSX.Element {
   // ─── Render ───────────────────────────────────────────────────────
 
   const termRows = stdout.rows ?? 24;
+  const termCols = stdout.columns ?? 80;
+
+  if (termCols < MIN_COLS || termRows < MIN_ROWS) {
+    return <TooSmall cols={termCols} rows={termRows} />;
+  }
 
   return (
     <Box flexDirection="column" height={termRows}>
