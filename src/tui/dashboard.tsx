@@ -206,7 +206,11 @@ function ListView({
 
 // ─── Dashboard ────────────────────────────────────────────────────────
 
-export function Dashboard(): JSX.Element {
+interface DashboardProps {
+  onVisiblePrKeysChange?: ((keys: string[]) => void) | undefined;
+}
+
+export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.Element {
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
   const viewMode = useStore(vigilStore, s => s.viewMode);
@@ -298,6 +302,20 @@ export function Dashboard(): JSX.Element {
       }));
     }
   }, [scrollOffset]);
+
+  const visiblePrKeys = useMemo(() => {
+    if (sorted.length === 0) return [];
+    if (viewMode === 'cards') {
+      const startIdx = scrollOffset * numCols;
+      return sorted.slice(startIdx, startIdx + visibleCount).map(item => item.key);
+    }
+    return sorted.slice(scrollOffset, scrollOffset + visibleRows).map(item => item.key);
+  }, [sorted, viewMode, scrollOffset, numCols, visibleCount, visibleRows]);
+
+  useEffect(() => {
+    if (!onVisiblePrKeysChange) return;
+    onVisiblePrKeysChange(visiblePrKeys);
+  }, [onVisiblePrKeysChange, visiblePrKeys]);
 
   const isSearchActive = searchQuery !== null;
 

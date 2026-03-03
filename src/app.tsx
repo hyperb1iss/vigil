@@ -138,6 +138,7 @@ export function App(): JSX.Element {
   const detailLineCount = useDetailLineCount();
   const [showHelp, setShowHelp] = useState(false);
   const detailPrefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visiblePrefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Get PR keys sorted to match dashboard order. */
   const getSortedKeys = useCallback((): string[] => {
@@ -163,6 +164,23 @@ export function App(): JSX.Element {
     },
     [getSortedKeys, focusedPr, setFocusedPr]
   );
+
+  /** Prefetch details for cards currently visible in the dashboard viewport. */
+  const onVisiblePrKeysChange = useCallback((keys: string[]): void => {
+    if (visiblePrefetchTimer.current) {
+      clearTimeout(visiblePrefetchTimer.current);
+      visiblePrefetchTimer.current = null;
+    }
+    if (keys.length === 0) return;
+
+    const uniqueKeys = [...new Set(keys)];
+    visiblePrefetchTimer.current = setTimeout(() => {
+      for (const key of uniqueKeys) {
+        void fetchDetailIfNeeded(key);
+      }
+      visiblePrefetchTimer.current = null;
+    }, DETAIL_PREFETCH_DEBOUNCE_MS);
+  }, []);
 
   // ─── Extracted Input Handlers ──────────────────────────────────────
 
@@ -474,6 +492,15 @@ export function App(): JSX.Element {
     };
   }, [focusedPr, view]);
 
+  useEffect(() => {
+    return () => {
+      if (visiblePrefetchTimer.current) {
+        clearTimeout(visiblePrefetchTimer.current);
+        visiblePrefetchTimer.current = null;
+      }
+    };
+  }, []);
+
   // ─── Render ───────────────────────────────────────────────────────
 
   const termRows = stdout.rows ?? 24;
@@ -489,7 +516,7 @@ export function App(): JSX.Element {
         <HelpOverlay />
       ) : (
         <>
-          {view === 'dashboard' && <Dashboard />}
+          {view === 'dashboard' && <Dashboard onVisiblePrKeysChange={onVisiblePrKeysChange} />}
           {view === 'detail' && <PrDetail />}
           {view === 'action' && <ActionPanel />}
           {view === 'activity' && <ActivityPanel />}
