@@ -17,6 +17,7 @@ const {
   throwClassifiedError,
   buildPrFromDetail,
   buildPrFromSearch,
+  carryForwardKnown,
   isTransientGhFailure,
 } = _internal;
 
@@ -610,5 +611,57 @@ describe('buildPrFromSearch', () => {
     const pr = buildPrFromSearch(raw);
     expect(pr.author.login).toBe('unknown');
     expect(pr.isDraft).toBe(true);
+  });
+});
+
+// ─── carryForwardKnown ─────────────────────────────────────────────────
+
+describe('carryForwardKnown', () => {
+  function makePr(key: string, state: 'OPEN' | 'CLOSED' | 'MERGED', updatedAt: string) {
+    const [repo, numberStr] = key.split('#');
+    const repoName = repo.split('/')[1] ?? repo;
+    return {
+      key,
+      number: Number(numberStr),
+      title: `PR ${numberStr}`,
+      body: '',
+      url: `https://github.com/${repo}/pull/${numberStr}`,
+      repository: { name: repoName, nameWithOwner: repo },
+      author: { login: 'dev', isBot: false },
+      headRefName: 'feat/x',
+      baseRefName: 'main',
+      isDraft: false,
+      state,
+      mergeable: 'UNKNOWN' as const,
+      mergeStateStatus: 'UNKNOWN' as const,
+      reviewDecision: '' as const,
+      reviews: [],
+      comments: [],
+      checks: [],
+      labels: [],
+      reviewRequests: [],
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      createdAt: updatedAt,
+      updatedAt,
+    };
+  }
+
+  test('only carries forward PRs that still exist in current open snapshot', () => {
+    const known = new Map<string, ReturnType<typeof makePr>>([
+      ['owner/repo#1', makePr('owner/repo#1', 'MERGED', '2026-02-20T00:00:00Z')],
+      ['owner/repo#2', makePr('owner/repo#2', 'OPEN', '2026-02-20T00:00:00Z')],
+    ]);
+
+    // search pass discovered only #2 as currently open
+    const prMap = new Map<string, ReturnType<typeof makePr>>([
+      ['owner/repo#2', makePr('owner/repo#2', 'OPEN', '2026-03-01T00:00:00Z')],
+    ]);
+
+    carryForwardKnown('owner/repo', known, prMap);
+
+    expect(prMap.has('owner/repo#1')).toBe(false);
+    expect(prMap.get('owner/repo#2')?.updatedAt).toBe('2026-02-20T00:00:00Z');
   });
 });

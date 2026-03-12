@@ -147,6 +147,12 @@ function diffConflicts(
   now: string,
   events: PrEvent[]
 ): void {
+  // Ignore transitions involving UNKNOWN — GitHub returns UNKNOWN while
+  // recalculating mergeability (e.g. after a merge to the base branch).
+  // Treating it as a real state change causes flapping on dormant PRs
+  // whose repo has other active PRs triggering detail re-fetches.
+  if (prev.mergeable === 'UNKNOWN' || pr.mergeable === 'UNKNOWN') return;
+
   if (prev.mergeable !== 'CONFLICTING' && pr.mergeable === 'CONFLICTING') {
     events.push({ type: 'conflict_detected', prKey: key, pr, timestamp: now });
   } else if (prev.mergeable === 'CONFLICTING' && pr.mergeable !== 'CONFLICTING') {

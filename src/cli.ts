@@ -26,6 +26,8 @@ import type { Notification } from './types/store.js';
 const MIN_POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_INTERVAL_MS = 15 * 60_000;
 const SKIP_STARTUP_EVENTS = process.env.VIGIL_SKIP_STARTUP_EVENTS === '1';
+const NOTIFICATION_COOLDOWN_MS = 5 * 60_000;
+const recentNotificationKeys = new Map<string, number>();
 
 function clampPollInterval(ms: number): number {
   if (!Number.isFinite(ms)) return MIN_POLL_INTERVAL_MS;
@@ -130,6 +132,46 @@ function isEventNotificationEnabled(
   }
 }
 
+/** Build a dedup key for a notification based on its event type and PR. */
+function notificationDedupeKey(event: PrEvent): string {
+  // For checks, include the set of failed check names so genuinely new failures
+  // still produce a notification while the same ongoing failure is suppressed.
+  if (event.data?.type === 'checks_changed') {
+    const failed = event.data.checks
+      .filter(c => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED')
+      .map(c => c.name)
+      .sort()
+      .join(',');
+    return `notif:${event.type}:${event.prKey}:${failed}`;
+  }
+
+  // For reviews, include the review ID so different reviewers still notify.
+  if (event.data?.type === 'review_submitted') {
+    return `notif:${event.type}:${event.prKey}:${event.data.review.id}`;
+  }
+
+  // For comments, include the comment ID.
+  if (event.data?.type === 'comment_added') {
+    return `notif:${event.type}:${event.prKey}:${event.data.comment.id}`;
+  }
+
+  return `notif:${event.type}:${event.prKey}`;
+}
+
+/** Returns true if a notification with this key was already sent recently. */
+function isRecentlySentNotification(key: string, now = Date.now()): boolean {
+  // Prune stale entries
+  for (const [k, ts] of recentNotificationKeys) {
+    if (now - ts > NOTIFICATION_COOLDOWN_MS) {
+      recentNotificationKeys.delete(k);
+    }
+  }
+
+  const prev = recentNotificationKeys.get(key);
+  recentNotificationKeys.set(key, now);
+  return prev !== undefined && now - prev <= NOTIFICATION_COOLDOWN_MS;
+}
+
 /** Process events and dispatch desktop notifications. */
 function dispatchNotifications(
   events: PrEvent[],
@@ -145,6 +187,7 @@ function dispatchNotifications(
     const notification = eventToNotification(event);
     if (!notification) continue;
     if (!isEventNotificationEnabled(event.type, notifConfig)) continue;
+    if (isRecentlySentNotification(notificationDedupeKey(event))) continue;
 
     store.addNotification(notification);
 

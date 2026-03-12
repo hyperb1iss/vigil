@@ -294,12 +294,31 @@ describe('diffPrs → conflicts', () => {
     expect(events.some(e => e.type === 'conflict_resolved')).toBe(true);
   });
 
-  test('unknown → conflicting emits conflict_detected', () => {
+  test('unknown → conflicting is ignored (transient API state)', () => {
     const prev = makePr({ mergeable: 'UNKNOWN' });
     const curr = makePr({ mergeable: 'CONFLICTING' });
     const events = diffPrs(toMap(prev), toMap(curr));
 
-    expect(events.some(e => e.type === 'conflict_detected')).toBe(true);
+    expect(events.some(e => e.type === 'conflict_detected')).toBe(false);
+  });
+
+  test('conflicting → unknown is ignored (transient API state)', () => {
+    const prev = makePr({ mergeable: 'CONFLICTING' });
+    const curr = makePr({ mergeable: 'UNKNOWN' });
+    const events = diffPrs(toMap(prev), toMap(curr));
+
+    expect(events.some(e => e.type === 'conflict_resolved')).toBe(false);
+  });
+
+  test('unknown → mergeable is ignored (transient API state)', () => {
+    const prev = makePr({ mergeable: 'UNKNOWN' });
+    const curr = makePr({ mergeable: 'MERGEABLE' });
+    const events = diffPrs(toMap(prev), toMap(curr));
+
+    const conflictEvents = events.filter(
+      e => e.type === 'conflict_detected' || e.type === 'conflict_resolved'
+    );
+    expect(conflictEvents).toHaveLength(0);
   });
 
   test('staying conflicting emits nothing', () => {

@@ -813,7 +813,9 @@ function carryForwardKnown(
 ): void {
   const prefix = `${repo}#`;
   for (const [key, pr] of knownPrs) {
-    if (key.startsWith(prefix)) {
+    // Only preserve data for PRs still present in the current open-search snapshot.
+    // Otherwise merged/closed PRs can linger indefinitely as stale cache entries.
+    if (key.startsWith(prefix) && prMap.has(key)) {
       prMap.set(key, pr);
     }
   }
@@ -837,5 +839,6 @@ export const _internal = {
   throwClassifiedError,
   buildPrFromDetail,
   buildPrFromSearch,
+  carryForwardKnown,
   isTransientGhFailure,
 };
