@@ -76,5 +76,19 @@ export const ghSearchCode = tool(
   }
 );
 
-/** All GitHub tools bundled for convenience */
-export const githubTools = [ghPrComment, ghPrMerge, ghSearchCode];
+interface GitHubToolOptions {
+  allowWrite?: boolean;
+}
+
+export function createGithubTools(options: GitHubToolOptions = {}) {
+  const allowWrite = options.allowWrite ?? false;
+  if (!allowWrite) {
+    return [ghSearchCode];
+  }
+
+  return [ghPrComment, ghPrMerge, ghSearchCode];
+}
+
+export const _internal = {
+  createGithubTools,
+};
