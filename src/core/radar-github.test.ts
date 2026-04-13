@@ -77,6 +77,10 @@ function makeRepoConfig(overrides: Partial<RadarRepoConfig> = {}): RadarRepoConf
 }
 
 describe('radar github internals', () => {
+  test('buildDirectReviewSearchQuery requests all open direct review requests', () => {
+    expect(_internal.buildDirectReviewSearchQuery()).toBe('is:pr is:open review-requested:@me');
+  });
+
   test('buildMergedSearchQuery constrains merged PR backfill by timestamp', () => {
     expect(_internal.buildMergedSearchQuery('owner/repo', '2026-04-01T00:00:00Z')).toBe(
       'repo:owner/repo is:pr is:merged merged:>=2026-04-01T00:00:00Z'
@@ -130,6 +134,119 @@ describe('radar github internals', () => {
     expect(pr.key).toBe('owner/repo#42');
     expect(pr.headRefName).toBe('');
     expect(pr.labels[0]?.name).toBe('priority');
+  });
+
+  test('connectionHasNextPage detects pagination markers', () => {
+    expect(
+      _internal.connectionHasNextPage({
+        pageInfo: {
+          hasNextPage: true,
+        },
+      })
+    ).toBe(true);
+    expect(_internal.connectionHasNextPage(undefined)).toBe(false);
+  });
+
+  test('isGraphqlRadarPrMetadataTruncated flags clipped review metadata', () => {
+    expect(
+      _internal.isGraphqlRadarPrMetadataTruncated({
+        number: 7,
+        title: 'Big review queue',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/7',
+        createdAt: '2026-04-10T00:00:00Z',
+        updatedAt: '2026-04-10T00:00:00Z',
+        reviews: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: true,
+          },
+        },
+      })
+    ).toBe(true);
+
+    expect(
+      _internal.isGraphqlRadarPrMetadataTruncated({
+        number: 7,
+        title: 'Normal queue',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/7',
+        createdAt: '2026-04-10T00:00:00Z',
+        updatedAt: '2026-04-10T00:00:00Z',
+        labels: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        reviews: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        comments: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        statusCheckRollup: {
+          contexts: {
+            nodes: [],
+            pageInfo: {
+              hasNextPage: false,
+            },
+          },
+        },
+        reviewRequests: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+      })
+    ).toBe(false);
+  });
+
+  test('isGraphqlRadarPrFilesTruncated flags clipped file lists', () => {
+    expect(
+      _internal.isGraphqlRadarPrFilesTruncated({
+        number: 9,
+        title: 'Many files',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/9',
+        createdAt: '2026-04-10T00:00:00Z',
+        updatedAt: '2026-04-10T00:00:00Z',
+        files: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: true,
+          },
+        },
+      })
+    ).toBe(true);
+
+    expect(
+      _internal.isGraphqlRadarPrFilesTruncated({
+        number: 9,
+        title: 'Few files',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/9',
+        createdAt: '2026-04-10T00:00:00Z',
+        updatedAt: '2026-04-10T00:00:00Z',
+        files: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+      })
+    ).toBe(false);
   });
 
   test('shouldExcludeDirectReviewPr respects self-review exclusion', () => {

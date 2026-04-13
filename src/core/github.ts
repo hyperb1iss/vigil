@@ -238,6 +238,7 @@ interface GhGraphqlViewerRepositoriesPage {
 
 const DEFAULT_GH_TIMEOUT_MS = 30_000;
 const DETAIL_FETCH_CONCURRENCY = 8;
+const TRUNCATED_DETAIL_FETCH_CONCURRENCY = 4;
 const GH_TRANSIENT_RETRIES = 3;
 const GH_RETRY_BASE_DELAY_MS = 400;
 const GH_GRAPHQL_SEARCH_CEILING = 1000;
@@ -345,6 +346,10 @@ const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
               name
               color
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           reviews(first: 100) {
             nodes {
@@ -365,6 +370,10 @@ const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
                   name
                 }
               }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
             }
           }
           comments(first: 100) {
@@ -387,6 +396,10 @@ const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           statusCheckRollup {
             contexts(first: 100) {
@@ -405,6 +418,10 @@ const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
                   targetUrl
                 }
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
           reviewRequests(first: 100) {
@@ -420,11 +437,19 @@ const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           assignees(first: 100) {
             nodes {
               login
               name
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
             }
           }
           author {
@@ -478,6 +503,10 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
               name
               color
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           reviews(first: 100) {
             nodes {
@@ -498,6 +527,10 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
                   name
                 }
               }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
             }
           }
           comments(first: 100) {
@@ -520,6 +553,10 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           statusCheckRollup {
             contexts(first: 100) {
@@ -538,6 +575,10 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
                   targetUrl
                 }
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
           reviewRequests(first: 100) {
@@ -553,11 +594,19 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
           assignees(first: 100) {
             nodes {
               login
               name
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
             }
           }
           author {
@@ -1069,8 +1118,7 @@ export async function fetchMyOpenPrs(
   await runWithConcurrency([...detailRepos], DETAIL_FETCH_CONCURRENCY, async nameWithOwner => {
     try {
       const details = await fetchRepoDetailResults(nameWithOwner);
-      for (const raw of details) {
-        const pr = buildPrFromDetail(raw, nameWithOwner);
+      for (const pr of details) {
         prMap.set(pr.key, pr); // overwrite search stub with full detail
       }
     } catch {
@@ -1126,7 +1174,56 @@ function warnSearchCeiling(scope: string): void {
   );
 }
 
-async function fetchRepoDetailResults(repo: string): Promise<GhPrDetail[]> {
+function connectionHasNextPage<T>(connection: GhConnection<T> | null | undefined): boolean {
+  return connection?.pageInfo?.hasNextPage === true;
+}
+
+function isGraphqlDetailPrTruncated(raw: GhGraphqlDetailPr): boolean {
+  return (
+    connectionHasNextPage(raw.labels) ||
+    connectionHasNextPage(raw.reviews) ||
+    connectionHasNextPage(raw.comments) ||
+    connectionHasNextPage(raw.statusCheckRollup?.contexts) ||
+    connectionHasNextPage(raw.reviewRequests) ||
+    connectionHasNextPage(raw.assignees)
+  );
+}
+
+async function hydrateGraphqlDetailNodes(
+  nodes: GhGraphqlDetailPr[],
+  repo: string
+): Promise<PullRequest[]> {
+  const prs = new Array<PullRequest>(nodes.length);
+  const truncated = nodes.flatMap((node, index) => {
+    if (isGraphqlDetailPrTruncated(node)) {
+      return [{ index, node }];
+    }
+
+    prs[index] = buildPrFromDetail(flattenGraphqlDetailPr(node), repo);
+    return [];
+  });
+
+  if (truncated.length === 0) {
+    return prs;
+  }
+
+  const { owner, name } = splitRepoNameWithOwner(repo);
+  await runWithConcurrency(
+    truncated,
+    TRUNCATED_DETAIL_FETCH_CONCURRENCY,
+    async ({ index, node }) => {
+      try {
+        prs[index] = await fetchPrDetail(owner, name, node.number);
+      } catch {
+        prs[index] = buildPrFromDetail(flattenGraphqlDetailPr(node), repo);
+      }
+    }
+  );
+
+  return prs;
+}
+
+async function fetchRepoDetailResults(repo: string): Promise<PullRequest[]> {
   const nodes = await runGhGraphqlSearch<GhGraphqlDetailPr>(
     GRAPHQL_DETAIL_DISCOVERY_QUERY,
     buildAuthoredOpenSearchQuery(repo)
@@ -1134,7 +1231,7 @@ async function fetchRepoDetailResults(repo: string): Promise<GhPrDetail[]> {
   if (nodes.length >= GH_GRAPHQL_SEARCH_CEILING) {
     warnSearchCeiling(repo);
   }
-  return nodes.map(flattenGraphqlDetailPr);
+  return hydrateGraphqlDetailNodes(nodes, repo);
 }
 
 let viewerLoginCache: string | null = null;
@@ -1156,8 +1253,7 @@ async function fetchRepositoryFallbackOpenPrs(
 
   await runWithConcurrency(targetRepos, DETAIL_FETCH_CONCURRENCY, async repo => {
     const details = await fetchRepoOpenPrDetailsViaRepository(repo, viewerLogin);
-    for (const raw of details) {
-      const pr = buildPrFromDetail(raw, repo);
+    for (const pr of details) {
       prMap.set(pr.key, pr);
     }
   });
@@ -1169,15 +1265,16 @@ async function fetchRepositoryFallbackOpenPrs(
 async function fetchRepoOpenPrDetailsViaRepository(
   repo: string,
   viewerLogin: string
-): Promise<GhPrDetail[]> {
+): Promise<PullRequest[]> {
   const nodes = await runGhGraphqlRepositoryPullRequests<GhGraphqlDetailPr>(
     repo,
     GRAPHQL_REPOSITORY_DETAIL_QUERY
   );
 
-  return nodes
-    .filter(node => node.author?.login?.toLowerCase() === viewerLogin)
-    .map(flattenGraphqlDetailPr);
+  return hydrateGraphqlDetailNodes(
+    nodes.filter(node => node.author?.login?.toLowerCase() === viewerLogin),
+    repo
+  );
 }
 
 async function fetchViewerRepositoryNames(): Promise<string[]> {
@@ -1515,6 +1612,8 @@ export const _internal = {
   carryForwardKnown,
   findDetailRepos,
   buildAuthoredOpenSearchQuery,
+  connectionHasNextPage,
+  isGraphqlDetailPrTruncated,
   mergeKnownIntoCurrent,
   isTransientGhFailure,
   formatGhArgsForError,

@@ -21,7 +21,9 @@ const {
   carryForwardKnown,
   findDetailRepos,
   buildAuthoredOpenSearchQuery,
+  connectionHasNextPage,
   formatGhArgsForError,
+  isGraphqlDetailPrTruncated,
   isTransientGhFailure,
   mergeKnownIntoCurrent,
 } = _internal;
@@ -412,6 +414,123 @@ describe('formatGhArgsForError', () => {
     expect(formatGhArgsForError(['api', '/repos/x/y', '--field', 'body=secret text'])).toBe(
       'api /repos/x/y --field <redacted>'
     );
+  });
+});
+
+describe('connectionHasNextPage', () => {
+  test('returns true when a connection reports more pages', () => {
+    expect(
+      connectionHasNextPage({
+        pageInfo: {
+          hasNextPage: true,
+        },
+      })
+    ).toBe(true);
+  });
+
+  test('returns false for missing or exhausted connections', () => {
+    expect(connectionHasNextPage(undefined)).toBe(false);
+    expect(
+      connectionHasNextPage({
+        pageInfo: {
+          hasNextPage: false,
+        },
+      })
+    ).toBe(false);
+  });
+});
+
+describe('isGraphqlDetailPrTruncated', () => {
+  test('detects truncated nested detail connections', () => {
+    expect(
+      isGraphqlDetailPrTruncated({
+        number: 42,
+        title: 'Big PR',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/42',
+        body: '',
+        createdAt: '2026-02-18T10:00:00Z',
+        updatedAt: '2026-02-18T12:00:00Z',
+        headRefName: 'feat/big',
+        baseRefName: 'main',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        reviewDecision: 'REVIEW_REQUIRED',
+        additions: 1,
+        deletions: 1,
+        changedFiles: 1,
+        labels: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: true,
+          },
+        },
+        author: { login: 'alice' },
+      })
+    ).toBe(true);
+  });
+
+  test('ignores fully fetched detail connections', () => {
+    expect(
+      isGraphqlDetailPrTruncated({
+        number: 42,
+        title: 'Normal PR',
+        state: 'OPEN',
+        isDraft: false,
+        url: 'https://github.com/owner/repo/pull/42',
+        body: '',
+        createdAt: '2026-02-18T10:00:00Z',
+        updatedAt: '2026-02-18T12:00:00Z',
+        headRefName: 'feat/normal',
+        baseRefName: 'main',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        reviewDecision: 'REVIEW_REQUIRED',
+        additions: 1,
+        deletions: 1,
+        changedFiles: 1,
+        labels: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        reviews: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        comments: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        statusCheckRollup: {
+          contexts: {
+            nodes: [],
+            pageInfo: {
+              hasNextPage: false,
+            },
+          },
+        },
+        reviewRequests: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        assignees: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        },
+        author: { login: 'alice' },
+      })
+    ).toBe(false);
   });
 });
 
