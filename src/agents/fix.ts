@@ -16,6 +16,7 @@ import type { AgentResult, AgentRun, ProposedAction } from '../types/agents.js';
 import type { ChecksChangedData, PrEvent, ReviewSubmittedData } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
+import { resolveExecutionWorktreePath } from './execution-worktree.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 import { createFsTools } from './tools/fs.js';
 import { createGitTools } from './tools/git.js';
@@ -317,12 +318,12 @@ export async function executeFixAction(action: ProposedAction): Promise<string> 
   }
 
   const event = action.context?.event;
-  const worktreePath = action.context?.worktreePath;
-  if (!event || !worktreePath) {
+  if (!event) {
     throw new Error(`Action "${action.type}" is missing execution context.`);
   }
 
   const pr = vigilStore.getState().prs.get(action.prKey) ?? event.pr;
+  const worktreePath = resolveExecutionWorktreePath(action, pr);
   const result = await runFixSession(event, pr, worktreePath, 'execute');
   if (!result.success) {
     throw new Error(result.summary);
