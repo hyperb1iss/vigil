@@ -290,7 +290,7 @@ async function main(): Promise<void> {
 
   // Load config
   const config = loadGlobalConfig();
-  const repoContexts = await loadRuntimeRepoContexts();
+  const repoContexts = await loadRuntimeRepoContexts(process.cwd(), config.localRepos);
 
   // Apply CLI overrides
   if (argv.mode) {

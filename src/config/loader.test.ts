@@ -52,6 +52,30 @@ describe('loadGlobalConfig', () => {
     expect(config).toEqual(defaultConfig);
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });
+
+  test('parses configured local repo directories', () => {
+    const configDir = join(tempDir, 'vigil');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'config.json'),
+      JSON.stringify({
+        localRepos: [
+          {
+            repo: 'acme/webapp',
+            path: '~/dev/webapp',
+          },
+        ],
+      })
+    );
+
+    const config = loadGlobalConfig();
+    expect(config.localRepos).toEqual([
+      {
+        repo: 'acme/webapp',
+        path: '~/dev/webapp',
+      },
+    ]);
+  });
 });
 
 describe('loadRepoConfig', () => {

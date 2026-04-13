@@ -35,6 +35,13 @@ const displayOverridesSchema = z
   })
   .strict();
 
+const localRepoSchema = z
+  .object({
+    repo: z.string().min(1),
+    path: z.string().min(1),
+  })
+  .strict();
+
 const radarRepoSchema = z
   .object({
     repo: z.string().min(1),
@@ -96,6 +103,7 @@ export const globalConfigOverridesSchema = z
   .object({
     pollIntervalMs: z.number().int().positive().optional(),
     defaultMode: z.enum(['hitl', 'yolo']).optional(),
+    localRepos: z.array(localRepoSchema).optional(),
     notifications: notificationOverridesSchema.optional(),
     agent: agentOverridesSchema.optional(),
     learning: learningOverridesSchema.optional(),

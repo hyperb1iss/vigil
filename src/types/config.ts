@@ -7,11 +7,17 @@ export type ColorScheme = 'silkcircuit' | 'monochrome';
 export interface VigilConfig {
   pollIntervalMs: number;
   defaultMode: VigilMode;
+  localRepos: LocalRepoConfig[];
   notifications: NotificationConfig;
   agent: AgentConfig;
   learning: LearningConfig;
   display: DisplayConfig;
   radar: RadarConfig;
+}
+
+export interface LocalRepoConfig {
+  repo: string;
+  path: string;
 }
 
 export interface NotificationConfig {

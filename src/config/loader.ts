@@ -14,6 +14,7 @@ function mergeConfig(base: VigilConfig, overrides: GlobalConfigOverrides): Vigil
   return {
     pollIntervalMs: overrides.pollIntervalMs ?? base.pollIntervalMs,
     defaultMode: overrides.defaultMode ?? base.defaultMode,
+    localRepos: overrides.localRepos ?? base.localRepos,
     notifications: mergeNotifications(base, overrides),
     agent: mergeAgentConfig(base, overrides),
     learning: mergeLearningConfig(base, overrides),

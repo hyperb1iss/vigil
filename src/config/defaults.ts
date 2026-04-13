@@ -3,6 +3,7 @@ import type { VigilConfig } from '../types/index.js';
 export const defaultConfig: VigilConfig = {
   pollIntervalMs: 30_000,
   defaultMode: 'hitl',
+  localRepos: [],
   notifications: {
     enabled: true,
     onCiFailure: true,
