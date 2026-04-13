@@ -24,6 +24,17 @@ interface TextBlock {
   text: string;
 }
 
+function createEvidenceTools(worktreePath: string | undefined) {
+  if (!worktreePath) {
+    return [];
+  }
+
+  return [
+    ...createGitTools(worktreePath, { allowWrite: false }),
+    ...createFsTools(worktreePath, { allowWrite: false }),
+  ];
+}
+
 function findEvidenceCommentTarget(pr: PullRequest): string | undefined {
   return [...pr.comments]
     .reverse()
@@ -139,9 +150,7 @@ export async function runEvidenceAgent(
   });
 
   try {
-    const evidenceTools = worktreePath
-      ? [...createGitTools(worktreePath), ...createFsTools(worktreePath)]
-      : [];
+    const evidenceTools = createEvidenceTools(worktreePath);
     const evidenceMcpServer = createSdkMcpServer({
       name: 'vigil-evidence',
       version: '0.1.0',
@@ -270,5 +279,6 @@ export async function runEvidenceAgent(
 }
 
 export const _internal = {
+  createEvidenceTools,
   findEvidenceCommentTarget,
 };

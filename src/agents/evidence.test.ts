@@ -31,6 +31,22 @@ function makePr(overrides: Partial<PullRequest> = {}): PullRequest {
   };
 }
 
+describe('createEvidenceTools', () => {
+  test('returns no tools without a worktree', () => {
+    expect(_internal.createEvidenceTools(undefined)).toEqual([]);
+  });
+
+  test('only exposes read-only git and fs tools', () => {
+    const tools = _internal.createEvidenceTools('/tmp/worktree');
+    expect(tools.map(tool => tool.name)).toEqual([
+      'git_status',
+      'git_diff',
+      'read_file',
+      'list_files',
+    ]);
+  });
+});
+
 describe('findEvidenceCommentTarget', () => {
   test('selects the latest comment with verification headings', () => {
     const pr = makePr({
