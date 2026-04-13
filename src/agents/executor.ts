@@ -120,9 +120,6 @@ export async function executeAction(
       vigilStore.getState().updatePr(action.prKey, { worktree });
       return `Created worktree for ${action.prKey} at ${worktreePath}.`;
     }
-
-    case 'push_commit':
-      throw new Error(`Action "${action.type}" is not implemented by the executor.`);
   }
 }
 

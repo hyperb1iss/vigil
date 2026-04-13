@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { actionTypes } from '../types/agents.js';
+
 const notificationOverridesSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -154,7 +156,7 @@ export const repoConfigSchema = z
           .strict()
       )
       .optional(),
-    alwaysConfirm: z.array(z.string().min(1)).optional(),
+    alwaysConfirm: z.array(z.enum(actionTypes)).optional(),
     worktrees: z
       .object({
         autoDiscover: z.boolean(),

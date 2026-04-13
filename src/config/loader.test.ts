@@ -100,6 +100,30 @@ describe('loadRepoConfig', () => {
     }
   });
 
+  test('rejects unsupported alwaysConfirm action types', async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'vigil-repo-invalid-'));
+    try {
+      writeFileSync(
+        join(repoDir, '.vigilrc.json'),
+        JSON.stringify({
+          owner: 'acme',
+          repo: 'webapp',
+          baseBranch: 'main',
+          alwaysConfirm: ['push_commit'],
+        })
+      );
+
+      const errorSpy = mock(() => undefined);
+      console.error = errorSpy;
+
+      const config = await loadRepoConfig(repoDir);
+      expect(config).toBeNull();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   test('ignores TypeScript repo config files', async () => {
     const repoDir = mkdtempSync(join(tmpdir(), 'vigil-repo-ts-'));
     try {

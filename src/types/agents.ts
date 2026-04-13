@@ -38,16 +38,18 @@ export interface AgentResult {
   actions: ProposedAction[];
 }
 
-export type ActionType =
-  | 'apply_fix'
-  | 'push_commit'
-  | 'post_comment'
-  | 'edit_comment'
-  | 'rebase'
-  | 'create_worktree'
-  | 'merge'
-  | 'close'
-  | 'dismiss';
+export const actionTypes = [
+  'apply_fix',
+  'post_comment',
+  'edit_comment',
+  'rebase',
+  'create_worktree',
+  'merge',
+  'close',
+  'dismiss',
+] as const;
+
+export type ActionType = (typeof actionTypes)[number];
 
 export interface ActionExecutionContext {
   commentUrl?: string | undefined;

@@ -1,3 +1,4 @@
+import type { ActionType } from './agents.js';
 import type { DashboardFeedMode, RadarConfig } from './radar.js';
 
 export type VigilMode = 'hitl' | 'yolo';
@@ -72,7 +73,7 @@ export interface RepoConfig {
   bots?: Record<string, BotConfig> | undefined;
   monorepo?: MonorepoConfig | undefined;
   reviewPatterns?: ReviewPattern[] | undefined;
-  alwaysConfirm?: string[] | undefined;
+  alwaysConfirm?: ActionType[] | undefined;
   worktrees?: WorktreeConfig | undefined;
 }
 
