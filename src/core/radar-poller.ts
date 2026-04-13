@@ -23,6 +23,18 @@ let radarPollerTimer: ReturnType<typeof setInterval> | null = null;
 const DISAPPEARANCE_CONFIRM_POLLS = 2;
 const missingStreaks = new Map<string, number>();
 
+function resetRadarPollerState(
+  timer: ReturnType<typeof setInterval> | null,
+  streaks: Map<string, number>,
+  clearTimer: typeof clearInterval = clearInterval
+): null {
+  if (timer) {
+    clearTimer(timer);
+  }
+  streaks.clear();
+  return null;
+}
+
 function hasEnrichedDetail(pr: PullRequest): boolean {
   return (
     pr.headRefName.length > 0 ||
@@ -185,6 +197,8 @@ export function startRadarPoller(options: RadarPollerOptions): () => void {
   const safeIntervalMs = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 60_000;
   let inFlight = false;
 
+  radarPollerTimer = resetRadarPollerState(radarPollerTimer, missingStreaks);
+
   async function tick(): Promise<void> {
     if (inFlight) return;
     inFlight = true;
@@ -204,15 +218,13 @@ export function startRadarPoller(options: RadarPollerOptions): () => void {
   radarPollerTimer = setInterval(() => void tick(), safeIntervalMs);
 
   return () => {
-    if (radarPollerTimer) {
-      clearInterval(radarPollerTimer);
-      radarPollerTimer = null;
-    }
+    radarPollerTimer = resetRadarPollerState(radarPollerTimer, missingStreaks);
   };
 }
 
 export const _internal = {
   mergePullRequestSnapshot,
+  resetRadarPollerState,
   preserveSnapshotDetails,
   stabilizeCurrentSnapshot,
   makeChanges,

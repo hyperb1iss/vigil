@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 
 import type { PullRequest } from '../types/pr.js';
 import type { RadarPr } from '../types/radar.js';
@@ -49,6 +49,30 @@ function makeRadarPr(key: string, topTier: RadarPr['topTier'], isMerged = false)
 }
 
 describe('radar poller internals', () => {
+  test('resetRadarPollerState clears timers and disappearance streaks', () => {
+    const streaks = new Map<string, number>([['owner/repo#1', 1]]);
+    const clearTimer = mock(() => undefined);
+    const timer = { id: 1 } as unknown as ReturnType<typeof setInterval>;
+
+    const nextTimer = _internal.resetRadarPollerState(timer, streaks, clearTimer);
+
+    expect(nextTimer).toBeNull();
+    expect(streaks.size).toBe(0);
+    expect(clearTimer).toHaveBeenCalledTimes(1);
+    expect(clearTimer).toHaveBeenCalledWith(timer);
+  });
+
+  test('resetRadarPollerState still clears streaks without an active timer', () => {
+    const streaks = new Map<string, number>([['owner/repo#1', 2]]);
+    const clearTimer = mock(() => undefined);
+
+    const nextTimer = _internal.resetRadarPollerState(null, streaks, clearTimer);
+
+    expect(nextTimer).toBeNull();
+    expect(streaks.size).toBe(0);
+    expect(clearTimer).not.toHaveBeenCalled();
+  });
+
   test('stabilizeCurrentSnapshot keeps missing PR on first miss', () => {
     const previous = new Map([['owner/repo#1', makeRadarPr('owner/repo#1', 'domain')]]);
     const current = new Map<string, RadarPr>();
