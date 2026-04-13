@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { createStore } from 'zustand/vanilla';
 
@@ -11,6 +14,28 @@ import { createAgentSlice } from './slices/agents.js';
 import { createPrSlice } from './slices/prs.js';
 import { createRadarSlice } from './slices/radar.js';
 import { createUiSlice } from './slices/ui.js';
+import { saveUiPreferences } from './ui-preferences.js';
+
+let tempDir = '';
+let originalDataHome: string | undefined;
+
+beforeEach(() => {
+  originalDataHome = process.env.XDG_DATA_HOME;
+  tempDir = mkdtempSync(join(tmpdir(), 'vigil-store-'));
+  process.env.XDG_DATA_HOME = tempDir;
+});
+
+afterEach(() => {
+  if (originalDataHome === undefined) {
+    delete process.env.XDG_DATA_HOME;
+  } else {
+    process.env.XDG_DATA_HOME = originalDataHome;
+  }
+
+  if (tempDir) {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 // ─── Test Store Factory ────────────────────────────────────────────────
 
@@ -380,6 +405,27 @@ describe('UiSlice', () => {
 
     expect(store.getState().mode).toBe('yolo');
     expect(store.getState().dashboardFeedMode).toBe('both');
+  });
+
+  test('setConfig hydrates persisted dashboard preferences over config defaults', () => {
+    saveUiPreferences({
+      viewMode: 'list',
+      sortMode: 'state',
+      dashboardFeedMode: 'incoming',
+    });
+
+    const store = createTestStore();
+    store.getState().setConfig({
+      ...defaultConfig,
+      display: {
+        ...defaultConfig.display,
+        dashboardFeedMode: 'mine',
+      },
+    });
+
+    expect(store.getState().viewMode).toBe('list');
+    expect(store.getState().sortMode).toBe('state');
+    expect(store.getState().dashboardFeedMode).toBe('incoming');
   });
 
   test('setSearchQuery resets dashboard scroll on change', () => {

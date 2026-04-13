@@ -22,6 +22,7 @@ export const paths = {
   configFile: () => join(xdgConfig(), 'vigil', 'config.json'),
   data: () => join(xdgData(), 'vigil'),
   knowledgeFile: () => join(xdgData(), 'vigil', 'knowledge.md'),
+  uiStateFile: () => join(xdgData(), 'vigil', 'ui-state.json'),
   cache: () => join(xdgCache(), 'vigil'),
   snapshotDir: () => join(xdgCache(), 'vigil', 'snapshots'),
 } as const;

@@ -4,6 +4,7 @@ import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
 import type { DashboardFeedMode } from '../../types/radar.js';
 import type { Notification, SortMode, ViewMode, ViewName, VigilStore } from '../../types/store.js';
+import { loadUiPreferences, saveUiPreferences } from '../ui-preferences.js';
 
 const defaultScrollOffsets: Record<ViewName, number> = {
   dashboard: 0,
@@ -58,23 +59,44 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   setView: view => set({ view }),
 
   setViewMode: viewMode =>
-    set(prev => ({
-      viewMode,
-      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
-    })),
+    set(prev => {
+      saveUiPreferences({
+        viewMode,
+        sortMode: prev.sortMode,
+        dashboardFeedMode: prev.dashboardFeedMode,
+      });
+      return {
+        viewMode,
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+      };
+    }),
 
   setSortMode: sortMode =>
-    set(prev => ({
-      sortMode,
-      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
-    })),
+    set(prev => {
+      saveUiPreferences({
+        viewMode: prev.viewMode,
+        sortMode,
+        dashboardFeedMode: prev.dashboardFeedMode,
+      });
+      return {
+        sortMode,
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+      };
+    }),
 
   setDashboardFeedMode: mode =>
-    set(prev => ({
-      dashboardFeedMode: mode,
-      focusedPr: null,
-      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
-    })),
+    set(prev => {
+      saveUiPreferences({
+        viewMode: prev.viewMode,
+        sortMode: prev.sortMode,
+        dashboardFeedMode: mode,
+      });
+      return {
+        dashboardFeedMode: mode,
+        focusedPr: null,
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+      };
+    }),
 
   cycleDashboardFeedMode: () =>
     set(prev => {
@@ -84,6 +106,11 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
           : prev.dashboardFeedMode === 'both'
             ? 'incoming'
             : 'mine';
+      saveUiPreferences({
+        viewMode: prev.viewMode,
+        sortMode: prev.sortMode,
+        dashboardFeedMode: next,
+      });
       return {
         dashboardFeedMode: next,
         focusedPr: null,
@@ -96,12 +123,17 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   setMode: mode => set({ mode }),
 
   setConfig: config =>
-    set(prev => ({
-      config,
-      dashboardFeedMode: config.display.dashboardFeedMode,
-      mode: config.defaultMode,
-      scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
-    })),
+    set(prev => {
+      const preferences = loadUiPreferences(config);
+      return {
+        config,
+        viewMode: preferences.viewMode,
+        sortMode: preferences.sortMode,
+        dashboardFeedMode: preferences.dashboardFeedMode,
+        mode: config.defaultMode,
+        scrollOffsets: { ...prev.scrollOffsets, dashboard: 0 },
+      };
+    }),
 
   setSearchQuery: query =>
     set(prev => ({

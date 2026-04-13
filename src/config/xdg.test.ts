@@ -80,6 +80,11 @@ describe('paths', () => {
     expect(paths.knowledgeFile()).toBe('/xdg/vigil/knowledge.md');
   });
 
+  test('uiStateFile() returns ui-state.json path', () => {
+    process.env.XDG_DATA_HOME = '/xdg';
+    expect(paths.uiStateFile()).toBe('/xdg/vigil/ui-state.json');
+  });
+
   test('cache() returns vigil cache directory', () => {
     process.env.XDG_CACHE_HOME = '/xdg';
     expect(paths.cache()).toBe('/xdg/vigil');
