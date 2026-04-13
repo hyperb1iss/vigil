@@ -4,6 +4,8 @@ import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/agents.js';
 import type { RepoRuntimeContext } from '../types/config.js';
 import { logAgentActivity } from './activity-log.js';
+import { executeFixAction } from './fix.js';
+import { executeRebaseAction } from './rebase.js';
 
 const EXECUTOR_INTERVAL_MS = 1_000;
 
@@ -16,6 +18,8 @@ interface PrRef {
 interface ExecutorOptions {
   repoContexts?: Map<string, RepoRuntimeContext> | undefined;
   createWorktreeFn?: typeof createWorktree;
+  executeFixActionFn?: typeof executeFixAction;
+  executeRebaseActionFn?: typeof executeRebaseAction;
   getWorktreeStatusFn?: typeof getWorktreeStatus;
 }
 
@@ -78,9 +82,15 @@ export async function executeAction(
       return `Closed ${action.prKey}.`;
     }
 
-    case 'apply_fix':
-    case 'rebase':
-      return `No-op executor: ${action.type} is performed by the agent run.`;
+    case 'apply_fix': {
+      const executeFixActionFn = options?.executeFixActionFn ?? executeFixAction;
+      return executeFixActionFn(action);
+    }
+
+    case 'rebase': {
+      const executeRebaseActionFn = options?.executeRebaseActionFn ?? executeRebaseAction;
+      return executeRebaseActionFn(action);
+    }
 
     case 'dismiss':
       return 'Dismissed.';

@@ -1,8 +1,6 @@
 /**
- * Fix agent — applies targeted code fixes for review feedback or CI failures.
- *
- * Uses Claude Agent SDK's query() to stream responses, with git/fs/github
- * tools available via an in-process MCP server scoped to the PR worktree.
+ * Fix agent — proposes and applies targeted code fixes for review feedback or
+ * CI failures. Planning is read-only so approval happens before side effects.
  */
 
 import type {
@@ -22,9 +20,29 @@ import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.j
 import { createFsTools } from './tools/fs.js';
 import { createGitTools } from './tools/git.js';
 
-// ─── System Prompt ───────────────────────────────────────────────────────────
+type FixRunMode = 'plan' | 'execute';
 
-const SYSTEM_PROMPT = `You are Vigil's fix agent — a code surgeon. Your job is to apply targeted fixes for review feedback or CI failures on pull requests.
+const PLAN_SYSTEM_PROMPT = `You are Vigil's fix planning agent. Your job is to inspect the PR worktree and propose the exact minimal fix that should be approved.
+
+Workflow:
+1. Read the PR context and identify what needs fixing
+2. Check the knowledge base for known patterns matching this issue
+3. Use git_status to understand the current worktree state
+4. Read relevant files to understand the code
+5. Use git_diff to inspect current local changes when helpful
+6. Describe the exact fix you would apply and how you would verify it
+
+Rules:
+- ${UNTRUSTED_INPUT_NOTICE}
+- Do NOT modify files, stage changes, or create commits
+- Do NOT suggest broad refactors when a targeted fix is enough
+- For CI failures: identify the failing signal and root cause
+- For review feedback: address exactly what was requested, nothing more
+- If you cannot fix the issue safely, explain why clearly
+
+Return a concise execution-ready summary for approval.`;
+
+const EXECUTE_SYSTEM_PROMPT = `You are Vigil's fix execution agent. This fix has been approved and you should now apply it safely.
 
 Workflow:
 1. Read the PR context and identify what needs fixing
@@ -47,8 +65,6 @@ Rules:
 
 After fixing, summarize what you changed and why.`;
 
-// ─── Prompt Builder ──────────────────────────────────────────────────────────
-
 function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): string {
   const sections: string[] = [
     `# Fix Request for ${pr.repository.nameWithOwner}#${pr.number}`,
@@ -59,7 +75,6 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
     `**Changed files:** ${pr.changedFiles} (+${pr.additions} / -${pr.deletions})`,
   ];
 
-  // Event context
   sections.push('', `## Event: ${event.type}`);
 
   if (event.data?.type === 'review_submitted') {
@@ -85,7 +100,6 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
     }
   }
 
-  // Review comments
   if (pr.reviews.length > 0) {
     sections.push('', '## Recent Reviews');
     for (const review of pr.reviews.slice(-5)) {
@@ -95,7 +109,6 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
     }
   }
 
-  // Comments
   if (pr.comments.length > 0) {
     sections.push('', '## Recent Comments');
     for (const comment of pr.comments.slice(-5)) {
@@ -103,7 +116,6 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
     }
   }
 
-  // Knowledge base
   const knowledge = getKnowledgeAsContext();
   if (knowledge) {
     sections.push('', '## Knowledge Base (known patterns)', knowledge);
@@ -112,9 +124,12 @@ function buildPrompt(event: PrEvent, pr: PullRequest, worktreePath: string): str
   return sections.join('\n');
 }
 
-// ─── Result Parser ───────────────────────────────────────────────────────────
-
-function parseResult(resultText: string, prKey: string): ProposedAction[] {
+function parsePlanResult(
+  resultText: string,
+  prKey: string,
+  event: PrEvent,
+  worktreePath: string
+): ProposedAction[] {
   const action: ProposedAction = {
     id: crypto.randomUUID(),
     type: 'apply_fix',
@@ -122,13 +137,15 @@ function parseResult(resultText: string, prKey: string): ProposedAction[] {
     agent: 'fix',
     description: resultText.slice(0, 200),
     detail: resultText,
+    context: {
+      event,
+      worktreePath,
+    },
     requiresConfirmation: false,
     status: 'approved',
   };
   return [action];
 }
-
-// ─── Extract Text from Assistant Messages ────────────────────────────────────
 
 function extractAssistantText(message: SDKAssistantMessage): string {
   const parts: string[] = [];
@@ -140,12 +157,11 @@ function extractAssistantText(message: SDKAssistantMessage): string {
   return parts.join('');
 }
 
-// ─── Main Entry Point ────────────────────────────────────────────────────────
-
-export async function runFixAgent(
+async function runFixSession(
   event: PrEvent,
   pr: PullRequest,
-  worktreePath: string
+  worktreePath: string,
+  mode: FixRunMode
 ): Promise<AgentResult> {
   const store = vigilStore.getState();
   const runId = crypto.randomUUID();
@@ -164,18 +180,21 @@ export async function runFixAgent(
     agent: 'fix',
     runId,
     prKey: pr.key,
-    data: { eventType: event.type, worktreePath },
+    data: { eventType: event.type, mode, worktreePath },
   });
 
   try {
     const fixMcpServer = createSdkMcpServer({
       name: 'vigil-fix-tools',
       version: '0.1.0',
-      tools: [...createGitTools(worktreePath), ...createFsTools(worktreePath)],
+      tools: [
+        ...createGitTools(worktreePath, { allowWrite: mode === 'execute' }),
+        ...createFsTools(worktreePath, { allowWrite: mode === 'execute' }),
+      ],
     });
 
     const prompt = buildPrompt(event, pr, worktreePath);
-    const queryMark = markAgentQuery('fix', pr.key, prompt, runId);
+    const queryMark = markAgentQuery('fix', pr.key, `${mode}\n${prompt}`, runId);
     if (queryMark.repeatedWithinWindow) {
       logAgentActivity('fix_duplicate_query_detected', {
         agent: 'fix',
@@ -184,6 +203,7 @@ export async function runFixAgent(
         data: {
           duplicateCount: queryMark.duplicateCount,
           fingerprint: queryMark.fingerprint,
+          mode,
         },
       });
     }
@@ -192,7 +212,7 @@ export async function runFixAgent(
       prompt,
       options: {
         model: 'claude-sonnet-4-6',
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: mode === 'execute' ? EXECUTE_SYSTEM_PROMPT : PLAN_SYSTEM_PROMPT,
         cwd: worktreePath,
         persistSession: false,
         maxTurns: 15,
@@ -214,7 +234,7 @@ export async function runFixAgent(
           agent: 'fix',
           runId,
           prKey: pr.key,
-          data: { chars: text.length },
+          data: { chars: text.length, mode },
         });
       }
 
@@ -224,19 +244,19 @@ export async function runFixAgent(
           agent: 'fix',
           runId,
           prKey: pr.key,
-          data: { subtype: message.subtype, isError: Boolean(message.is_error) },
+          data: { subtype: message.subtype, isError: Boolean(message.is_error), mode },
         });
       }
     }
 
-    // Build the result
     const summary =
       resultMessage?.subtype === 'success'
         ? resultMessage.result
         : output.slice(0, 500) || 'Fix agent completed without explicit result.';
 
     const isError = resultMessage?.is_error ?? false;
-    const actions = isError ? [] : parseResult(summary, pr.key);
+    const actions =
+      mode === 'plan' && !isError ? parsePlanResult(summary, pr.key, event, worktreePath) : [];
 
     const result: AgentResult = {
       success: !isError,
@@ -252,6 +272,7 @@ export async function runFixAgent(
       data: {
         success: result.success,
         actions: result.actions.length,
+        mode,
       },
     });
 
@@ -275,9 +296,37 @@ export async function runFixAgent(
       agent: 'fix',
       runId,
       prKey: pr.key,
-      data: { error: message },
+      data: { error: message, mode },
     });
 
     return result;
   }
+}
+
+export async function runFixAgent(
+  event: PrEvent,
+  pr: PullRequest,
+  worktreePath: string
+): Promise<AgentResult> {
+  return runFixSession(event, pr, worktreePath, 'plan');
+}
+
+export async function executeFixAction(action: ProposedAction): Promise<string> {
+  if (action.type !== 'apply_fix') {
+    throw new Error(`Expected apply_fix action, received "${action.type}".`);
+  }
+
+  const event = action.context?.event;
+  const worktreePath = action.context?.worktreePath;
+  if (!event || !worktreePath) {
+    throw new Error(`Action "${action.type}" is missing execution context.`);
+  }
+
+  const pr = vigilStore.getState().prs.get(action.prKey) ?? event.pr;
+  const result = await runFixSession(event, pr, worktreePath, 'execute');
+  if (!result.success) {
+    throw new Error(result.summary);
+  }
+
+  return result.summary;
 }

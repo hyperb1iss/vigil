@@ -28,9 +28,26 @@ describe('executeAction', () => {
     expect(output).toBe('Dismissed.');
   });
 
-  test('returns a no-op summary for apply_fix', async () => {
-    const output = await executeAction(makeAction({ type: 'apply_fix' }));
-    expect(output).toContain('No-op executor');
+  test('delegates apply_fix execution to the fix agent handler', async () => {
+    const executeFixActionFn = mock(async () => 'Applied fix and committed changes.');
+
+    const output = await executeAction(makeAction({ type: 'apply_fix' }), {
+      executeFixActionFn,
+    });
+
+    expect(output).toBe('Applied fix and committed changes.');
+    expect(executeFixActionFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('delegates rebase execution to the rebase agent handler', async () => {
+    const executeRebaseActionFn = mock(async () => 'Rebased branch successfully.');
+
+    const output = await executeAction(makeAction({ type: 'rebase' }), {
+      executeRebaseActionFn,
+    });
+
+    expect(output).toBe('Rebased branch successfully.');
+    expect(executeRebaseActionFn).toHaveBeenCalledTimes(1);
   });
 
   test('creates a worktree and updates the PR state when context is available', async () => {

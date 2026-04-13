@@ -60,7 +60,13 @@ function validateGitPath(worktreeDir: string, path: string): string {
 
 // ─── Tool Definitions ───────────────────────────────────────────────────────
 
-export function createGitTools(worktreeDir: string) {
+interface GitToolOptions {
+  allowWrite?: boolean;
+}
+
+export function createGitTools(worktreeDir: string, options: GitToolOptions = {}) {
+  const allowWrite = options.allowWrite ?? true;
+
   const gitStatus = tool(
     'git_status',
     'Show the working tree status of the bound git worktree.',
@@ -87,32 +93,38 @@ export function createGitTools(worktreeDir: string) {
     }
   );
 
-  const gitAdd = tool(
-    'git_add',
-    'Stage files for the next commit.',
-    {
-      files: z.array(z.string()).describe('File paths to stage (relative to the worktree)'),
-    },
-    async ({ files }) => {
-      const safeFiles = files.map(file => validateGitPath(worktreeDir, file));
-      const output = await runGit(['add', '--', ...safeFiles], worktreeDir);
-      return { content: [{ type: 'text' as const, text: output || 'Files staged successfully.' }] };
-    }
-  );
+  if (allowWrite) {
+    const gitAdd = tool(
+      'git_add',
+      'Stage files for the next commit.',
+      {
+        files: z.array(z.string()).describe('File paths to stage (relative to the worktree)'),
+      },
+      async ({ files }) => {
+        const safeFiles = files.map(file => validateGitPath(worktreeDir, file));
+        const output = await runGit(['add', '--', ...safeFiles], worktreeDir);
+        return {
+          content: [{ type: 'text' as const, text: output || 'Files staged successfully.' }],
+        };
+      }
+    );
 
-  const gitCommit = tool(
-    'git_commit',
-    'Create a new commit with the staged changes.',
-    {
-      message: z.string().describe('Commit message'),
-    },
-    async ({ message }) => {
-      const output = await runGit(['commit', '-m', message], worktreeDir);
-      return { content: [{ type: 'text' as const, text: output }] };
-    }
-  );
+    const gitCommit = tool(
+      'git_commit',
+      'Create a new commit with the staged changes.',
+      {
+        message: z.string().describe('Commit message'),
+      },
+      async ({ message }) => {
+        const output = await runGit(['commit', '-m', message], worktreeDir);
+        return { content: [{ type: 'text' as const, text: output }] };
+      }
+    );
 
-  return [gitStatus, gitDiff, gitAdd, gitCommit];
+    return [gitStatus, gitDiff, gitAdd, gitCommit];
+  }
+
+  return [gitStatus, gitDiff];
 }
 
 export const _internal = {

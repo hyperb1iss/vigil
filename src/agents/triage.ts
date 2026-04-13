@@ -128,6 +128,17 @@ const TRIAGE_OUTPUT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const triageResultSchema = z.object({
+  classification: z.enum(['blocking', 'suggestion', 'nice-to-have', 'scope-creep', 'noise']),
+  routing: z.enum(['fix', 'respond', 'rebase', 'evidence', 'dismiss']),
+  priority: z.enum(['immediate', 'can-wait', 'informational']),
+  reasoning: z.string().min(1),
+});
+
+function parseTriageResult(raw: unknown): TriageResult {
+  return triageResultSchema.parse(raw);
+}
+
 // ─── Prompt Builder ──────────────────────────────────────────────────────────
 
 function buildTriagePrompt(event: PrEvent, pr: PullRequest): string {
@@ -264,7 +275,7 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
 
       // Extract structured output from result
       if (message.type === 'result' && message.subtype === 'success' && message.structured_output) {
-        resultPayload = message.structured_output as TriageResult;
+        resultPayload = parseTriageResult(message.structured_output);
         logAgentActivity('triage_result_message', {
           agent: 'triage',
           runId,
@@ -279,15 +290,11 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
       const currentRun = vigilStore.getState().activeAgents.get(runId);
       const output = currentRun?.streamingOutput ?? '';
       try {
-        resultPayload = JSON.parse(output) as TriageResult;
-      } catch {
-        // If we still can't parse, return a safe default
-        resultPayload = {
-          classification: 'noise',
-          routing: 'dismiss',
-          priority: 'informational',
-          reasoning: 'Triage agent could not produce a valid classification.',
-        };
+        resultPayload = parseTriageResult(JSON.parse(output));
+      } catch (error) {
+        throw new Error('Triage agent could not produce a valid classification.', {
+          cause: error,
+        });
       }
     }
 
@@ -331,3 +338,7 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
     };
   }
 }
+
+export const _internal = {
+  parseTriageResult,
+};

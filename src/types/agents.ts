@@ -1,3 +1,5 @@
+import type { PrEvent } from './events.js';
+
 export type AgentName = 'triage' | 'fix' | 'respond' | 'rebase' | 'evidence' | 'learning';
 export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed';
 
@@ -47,6 +49,11 @@ export type ActionType =
   | 'close'
   | 'dismiss';
 
+export interface ActionExecutionContext {
+  event?: PrEvent | undefined;
+  worktreePath?: string | undefined;
+}
+
 export interface ProposedAction {
   id: string;
   type: ActionType;
@@ -55,6 +62,7 @@ export interface ProposedAction {
   description: string;
   detail?: string | undefined;
   diff?: string | undefined;
+  context?: ActionExecutionContext | undefined;
   requiresConfirmation: boolean;
   status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
 }

@@ -47,7 +47,13 @@ function findExistingPath(path: string): string {
 
 // ─── Tool Definitions ───────────────────────────────────────────────────────
 
-export function createFsTools(worktreeDir: string) {
+interface FsToolOptions {
+  allowWrite?: boolean;
+}
+
+export function createFsTools(worktreeDir: string, options: FsToolOptions = {}) {
+  const allowWrite = options.allowWrite ?? true;
+
   const readFile = tool(
     'read_file',
     'Read the contents of a file within the bound worktree.',
@@ -59,22 +65,6 @@ export function createFsTools(worktreeDir: string) {
       const file = Bun.file(abs);
       const text = await file.text();
       return { content: [{ type: 'text' as const, text }] };
-    }
-  );
-
-  const writeFile = tool(
-    'write_file',
-    'Write content to a file within the bound worktree. Creates parent directories as needed.',
-    {
-      path: z.string().describe('File path relative to the worktree'),
-      content: z.string().describe('Content to write'),
-    },
-    async ({ path, content }) => {
-      const abs = safePath(worktreeDir, path, true);
-      await Bun.write(abs, content);
-      return {
-        content: [{ type: 'text' as const, text: `Wrote ${content.length} bytes to ${path}.` }],
-      };
     }
   );
 
@@ -97,7 +87,27 @@ export function createFsTools(worktreeDir: string) {
     }
   );
 
-  return [readFile, writeFile, listFiles];
+  if (allowWrite) {
+    const writeFile = tool(
+      'write_file',
+      'Write content to a file within the bound worktree. Creates parent directories as needed.',
+      {
+        path: z.string().describe('File path relative to the worktree'),
+        content: z.string().describe('Content to write'),
+      },
+      async ({ path, content }) => {
+        const abs = safePath(worktreeDir, path, true);
+        await Bun.write(abs, content);
+        return {
+          content: [{ type: 'text' as const, text: `Wrote ${content.length} bytes to ${path}.` }],
+        };
+      }
+    );
+
+    return [readFile, writeFile, listFiles];
+  }
+
+  return [readFile, listFiles];
 }
 
 export const _internal = {
