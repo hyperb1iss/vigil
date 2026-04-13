@@ -9,6 +9,7 @@ import { getAgentLogPath, logAgentActivity } from './agents/activity-log.js';
 import { startActionExecutor } from './agents/executor.js';
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
+import { runInit } from './config/init.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
 import { loadRuntimeRepoContexts } from './config/runtime.js';
 import { seedMockData } from './core/mock-data.js';
@@ -255,7 +256,55 @@ function dispatchRadarNotifications(
 // ─── Main ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const argv = await yargs(hideBin(process.argv))
+  const args = hideBin(process.argv);
+  if (args[0] === 'init') {
+    const argv = await yargs(args.slice(1))
+      .scriptName('vigil init')
+      .usage('$0 [options]')
+      .option('force', {
+        type: 'boolean',
+        default: false,
+        describe: 'Overwrite .vigilrc.json if it already exists',
+      })
+      .option('register-local', {
+        type: 'boolean',
+        default: true,
+        describe: 'Register this repo in global localRepos for worktree support',
+      })
+      .option('watch-all', {
+        type: 'boolean',
+        default: false,
+        describe: 'Add this repo to radar.repos with watchAll enabled',
+      })
+      .help()
+      .version(false)
+      .parse();
+
+    ensureDirectories();
+    const result = await runInit({
+      cwd: process.cwd(),
+      force: argv.force,
+      registerLocal: argv.registerLocal,
+      watchAll: argv.watchAll,
+    });
+
+    console.log(`[vigil] initialized ${result.repo}`);
+    console.log(
+      `[vigil] repo config: ${result.repoConfigWritten ? 'wrote' : 'kept'} ${result.repoConfigPath}`
+    );
+    console.log(
+      `[vigil] global config: ${result.globalConfigWritten ? 'updated' : 'unchanged'} ${result.globalConfigPath}`
+    );
+    if (result.localRepoRegistered) {
+      console.log('[vigil] registered local repo path for worktree actions');
+    }
+    if (result.radarRepoAdded) {
+      console.log('[vigil] enabled watchAll radar for this repo');
+    }
+    return;
+  }
+
+  const argv = await yargs(args)
     .scriptName('vigil')
     .usage('$0 [options]')
     .option('repo', {
