@@ -111,4 +111,42 @@ describe('radar github internals', () => {
       )
     ).toBe(false);
   });
+
+  test('buildSearchPullRequest creates a search-backed stub with stable identity', () => {
+    const pr = _internal.buildSearchPullRequest({
+      number: 42,
+      title: 'Review me',
+      state: 'OPEN',
+      isDraft: false,
+      url: 'https://github.com/owner/repo/pull/42',
+      body: 'stub',
+      createdAt: '2026-04-10T00:00:00Z',
+      updatedAt: '2026-04-11T00:00:00Z',
+      labels: [{ name: 'priority', color: 'ff00ff' }],
+      repository: { name: 'repo', nameWithOwner: 'owner/repo' },
+      author: { login: 'reviewer' },
+    });
+
+    expect(pr.key).toBe('owner/repo#42');
+    expect(pr.headRefName).toBe('');
+    expect(pr.labels[0]?.name).toBe('priority');
+  });
+
+  test('shouldExcludeDirectReviewPr respects self-review exclusion', () => {
+    expect(
+      _internal.shouldExcludeDirectReviewPr(
+        makePr({ author: { login: 'reviewer', isBot: false } }),
+        makeRadarConfig({ excludeOwnPrs: true }),
+        'reviewer'
+      )
+    ).toBe(true);
+
+    expect(
+      _internal.shouldExcludeDirectReviewPr(
+        makePr({ author: { login: 'teammate', isBot: false } }),
+        makeRadarConfig({ excludeOwnPrs: true }),
+        'reviewer'
+      )
+    ).toBe(false);
+  });
 });

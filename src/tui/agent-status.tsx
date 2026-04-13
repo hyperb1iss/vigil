@@ -1,10 +1,8 @@
 import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
 import type { JSX } from 'react';
 import { useStore } from 'zustand';
 
 import { vigilStore } from '../store/index.js';
-import type { AgentRun } from '../types/index.js';
 import { icons, palette, semantic, truncate } from './theme.js';
 
 function lastLine(output: string): string {
@@ -14,27 +12,6 @@ function lastLine(output: string): string {
   const last = lines[lines.length - 1];
   if (!last) return '';
   return last.length > 50 ? `${last.slice(0, 49)}\u2026` : last;
-}
-
-function AgentRow({ run }: { run: AgentRun }): JSX.Element {
-  const line = lastLine(run.streamingOutput);
-  return (
-    <Box gap={1} paddingLeft={1}>
-      <Text color={palette.neonCyan}>
-        <Spinner type="dots" />
-      </Text>
-      <Text color={palette.electricPurple} bold>
-        {run.agent}
-      </Text>
-      <Text color={semantic.dim}>{icons.arrow}</Text>
-      <Text color={semantic.branch}>{truncate(run.prKey, 30)}</Text>
-      {line && (
-        <Text color={semantic.muted} dimColor>
-          {line}
-        </Text>
-      )}
-    </Box>
-  );
 }
 
 export function AgentStatus(): JSX.Element {
@@ -53,23 +30,47 @@ export function AgentStatus(): JSX.Element {
     );
   }
 
+  const primary = running[0];
+  if (!primary) {
+    return (
+      <Box paddingX={1}>
+        <Text color={semantic.dim}>
+          {icons.bolt} agents {mode === 'yolo' ? 'auto' : 'standby'}
+        </Text>
+      </Box>
+    );
+  }
+
+  const extraCount = running.length - 1;
+
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={palette.electricPurple}
-      paddingX={1}
-      marginX={1}
-    >
-      <Box gap={1}>
+    <Box paddingX={1}>
+      <Text wrap="truncate-end">
         <Text color={palette.electricPurple} bold>
           {icons.bolt} Agents
         </Text>
-        <Text color={semantic.muted}>({running.length} active)</Text>
-      </Box>
-      {running.map(run => (
-        <AgentRow key={run.id} run={run} />
-      ))}
+        <Text color={semantic.muted}> ({running.length} active)</Text>
+        <Text color={semantic.dim}>{' · '}</Text>
+        <Text color={palette.electricPurple} bold>
+          {primary.agent}
+        </Text>
+        <Text color={semantic.dim}>{` ${icons.arrow} `}</Text>
+        <Text color={semantic.branch}>{truncate(primary.prKey, 30)}</Text>
+        {lastLine(primary.streamingOutput) && (
+          <>
+            <Text color={semantic.dim}>{' · '}</Text>
+            <Text color={semantic.muted} dimColor>
+              {lastLine(primary.streamingOutput)}
+            </Text>
+          </>
+        )}
+        {extraCount > 0 && (
+          <>
+            <Text color={semantic.dim}>{' · '}</Text>
+            <Text color={semantic.dim}>+{extraCount} more</Text>
+          </>
+        )}
+      </Text>
     </Box>
   );
 }

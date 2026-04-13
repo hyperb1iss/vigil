@@ -12,15 +12,19 @@ export function ScrollIndicator({
   total: number;
   visible: number;
 }): JSX.Element | null {
-  if (total <= visible) return null;
+  if (total <= 0) return null;
+
+  const effectiveVisible = Math.max(1, Math.min(visible, total));
+  const isScrollable = total > effectiveVisible;
 
   const canUp = current > 0;
-  const canDown = current + visible < total;
+  const canDown = current + effectiveVisible < total;
 
-  // Build a mini scrollbar track
   const trackWidth = 12;
-  const thumbSize = Math.max(1, Math.round((visible / total) * trackWidth));
-  const thumbPos = Math.round((current / total) * (trackWidth - thumbSize));
+  const thumbSize = isScrollable
+    ? Math.max(1, Math.round((effectiveVisible / total) * trackWidth))
+    : trackWidth;
+  const thumbPos = isScrollable ? Math.round((current / total) * (trackWidth - thumbSize)) : 0;
 
   const track: string[] = [];
   for (let i = 0; i < trackWidth; i++) {
@@ -33,15 +37,15 @@ export function ScrollIndicator({
 
   return (
     <Box justifyContent="center" gap={2}>
-      {canUp && <Text color={semantic.dim}>{'\u25B2'}</Text>}
+      {canUp ? <Text color={semantic.dim}>{'\u25B2'}</Text> : <Text color={semantic.dim}> </Text>}
       <Text>
-        <Text color={palette.electricPurple}>{track.join('')}</Text>
+        <Text color={isScrollable ? palette.electricPurple : semantic.dim}>{track.join('')}</Text>
       </Text>
       <Text color={semantic.muted}>
-        {`${Math.min(current + 1, total)}\u2013${Math.min(current + visible, total)}`}{' '}
+        {`${Math.min(current + 1, total)}\u2013${Math.min(current + effectiveVisible, total)}`}{' '}
         <Text color={semantic.dim}>of</Text> {total}
       </Text>
-      {canDown && <Text color={semantic.dim}>{'\u25BC'}</Text>}
+      {canDown ? <Text color={semantic.dim}>{'\u25BC'}</Text> : <Text color={semantic.dim}> </Text>}
     </Box>
   );
 }

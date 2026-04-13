@@ -22,6 +22,8 @@ import {
   truncate,
 } from './theme.js';
 
+export const PR_CARD_HEIGHT = 7;
+
 // ─── CI Bar (fixed-width proportional) ──────────────────────────────
 
 const CI_WIDTH = 10;
@@ -108,18 +110,28 @@ function ReviewBadge({
 
 // ─── Label Badges ───────────────────────────────────────────────────
 
-function LabelBadges({ labels }: { labels: PrLabel[] }): JSX.Element | null {
-  if (labels.length === 0) return null;
-
+function FooterMeta({
+  labels,
+  radar,
+}: {
+  labels: PrLabel[];
+  radar: RadarPr | undefined;
+}): JSX.Element {
   return (
-    <Box paddingTop={0}>
+    <Box height={1}>
       <Text wrap="truncate-end">
-        {labels.map((label, i) => (
-          <Text key={label.id}>
-            {i > 0 && <Text> </Text>}
-            <Text color={`#${label.color}`}>{label.name}</Text>
-          </Text>
-        ))}
+        {labels.length > 0 ? (
+          labels.map((label, i) => (
+            <Text key={label.id}>
+              {i > 0 && <Text> </Text>}
+              <Text color={`#${label.color}`}>{label.name}</Text>
+            </Text>
+          ))
+        ) : radar?.relevance[0] ? (
+          <Text color={semantic.muted}>{truncate(radar.relevance[0].reason, 64)}</Text>
+        ) : (
+          <Text color={semantic.dim}>{'\u00A0'}</Text>
+        )}
       </Text>
     </Box>
   );
@@ -186,6 +198,7 @@ export function PrCard({ pr, state, isFocused, width, source, radar }: PrCardPro
       borderStyle={isFocused ? 'double' : 'round'}
       borderColor={isFocused ? palette.electricPurple : palette.dimmed}
       paddingX={1}
+      height={PR_CARD_HEIGHT}
       width={width}
     >
       {/* Row 1: State + Number (left) ── Flags + Age (right) */}
@@ -283,8 +296,8 @@ export function PrCard({ pr, state, isFocused, width, source, radar }: PrCardPro
         )}
       </Box>
 
-      {/* Row 5: Labels (optional) */}
-      <LabelBadges labels={pr.labels} />
+      {/* Row 5: Stable footer keeps grid height consistent across cards */}
+      <FooterMeta labels={pr.labels} radar={radar} />
     </Box>
   );
 }

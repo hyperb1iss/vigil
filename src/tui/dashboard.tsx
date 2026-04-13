@@ -9,7 +9,7 @@ import { AgentStatus } from './agent-status.js';
 import type { DashboardItem } from './dashboard-feed.js';
 import { buildDashboardItems, matchesPr } from './dashboard-feed.js';
 import { KeybindBar } from './keybind-bar.js';
-import { PrCard } from './pr-card.js';
+import { PR_CARD_HEIGHT, PrCard } from './pr-card.js';
 import { PrRow } from './pr-row.js';
 import { ScrollIndicator } from './scroll-indicator.js';
 import { SearchBar } from './search-bar.js';
@@ -21,9 +21,6 @@ import { icons, palette, semantic, truncate } from './theme.js';
 /** Lines reserved for chrome: status bar (1) + divider (1) + scroll indicator (1) + agent status (1) + keybind separator (1) + keybind text (1) */
 const CHROME_LINES_CARD = 6;
 const CHROME_LINES_LIST = 6;
-
-/** Approximate height of a single card (border + 4-5 content rows) */
-const CARD_HEIGHT = 7;
 
 // ─── Empty State ──────────────────────────────────────────────────────
 
@@ -125,12 +122,10 @@ function CardGrid({
   termRows: number;
   scrollOffset: number;
 }): JSX.Element {
-  // Calculate columns: 2 if wide enough, else 1
   const numCols = termWidth >= 140 ? 2 : 1;
-  const cardWidth = numCols > 1 ? Math.floor((termWidth - 2) / numCols) : termWidth;
+  const cardWidth = numCols > 1 ? Math.floor((termWidth - (numCols - 1)) / numCols) : termWidth;
 
-  // Calculate visible cards based on terminal height
-  const visibleRows = Math.max(1, Math.floor((termRows - CHROME_LINES_CARD) / CARD_HEIGHT));
+  const visibleRows = Math.max(1, Math.floor((termRows - CHROME_LINES_CARD) / PR_CARD_HEIGHT));
   const visibleCards = visibleRows * numCols;
 
   // Windowed slice
@@ -269,9 +264,8 @@ export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.E
 
   const effectiveFocus = focusedPr ?? sorted[0]?.key ?? null;
 
-  // Layout math
   const numCols = viewMode === 'cards' ? (termWidth >= 140 ? 2 : 1) : 1;
-  const itemHeight = viewMode === 'cards' ? CARD_HEIGHT : 1;
+  const itemHeight = viewMode === 'cards' ? PR_CARD_HEIGHT : 1;
   const chrome = viewMode === 'cards' ? CHROME_LINES_CARD : CHROME_LINES_LIST;
   const visibleRows = Math.max(1, Math.floor((termRows - chrome) / itemHeight));
   const visibleCount = visibleRows * numCols;
@@ -320,7 +314,7 @@ export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.E
   const isSearchActive = searchQuery !== null;
 
   return (
-    <Box flexDirection="column" flexGrow={1}>
+    <Box flexDirection="column">
       {/* Status bar */}
       <StatusBar />
       {isSearchActive ? (
@@ -331,32 +325,28 @@ export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.E
         </Box>
       )}
 
-      {/* Main content — fills available vertical space */}
-      <Box flexDirection="column" flexGrow={1}>
-        {viewMode === 'cards' ? (
-          <CardGrid
-            items={sorted}
-            focusedPr={effectiveFocus}
-            termWidth={termWidth}
-            termRows={termRows}
-            scrollOffset={scrollOffset}
-          />
-        ) : (
-          <ListView
-            items={sorted}
-            focusedPr={effectiveFocus}
-            termRows={termRows}
-            scrollOffset={scrollOffset}
-          />
-        )}
-        <Box flexGrow={1} />
-        {/* Scroll indicator */}
-        <ScrollIndicator
-          current={scrollOffset * numCols}
-          total={sorted.length}
-          visible={visibleCount}
+      {viewMode === 'cards' ? (
+        <CardGrid
+          items={sorted}
+          focusedPr={effectiveFocus}
+          termWidth={termWidth}
+          termRows={termRows}
+          scrollOffset={scrollOffset}
         />
-      </Box>
+      ) : (
+        <ListView
+          items={sorted}
+          focusedPr={effectiveFocus}
+          termRows={termRows}
+          scrollOffset={scrollOffset}
+        />
+      )}
+
+      <ScrollIndicator
+        current={scrollOffset * numCols}
+        total={sorted.length}
+        visible={visibleCount}
+      />
 
       {/* Agent activity */}
       <AgentStatus />

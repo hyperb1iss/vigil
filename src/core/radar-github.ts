@@ -14,7 +14,7 @@ import type {
   ReviewState,
 } from '../types/index.js';
 import type { RadarConfig, RadarPr, RadarRepoConfig, RelevanceReason } from '../types/radar.js';
-import { runGhWithRetry } from './github.js';
+import { fetchPrDetail, runGhWithRetry } from './github.js';
 import { classifyRelevance, topTier } from './radar-classifier.js';
 
 interface GhAuthor {
@@ -103,6 +103,23 @@ interface GhRadarPr {
   files: GhPrFile[];
 }
 
+interface GhSearchPr {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  body?: string;
+  createdAt: string;
+  updatedAt: string;
+  labels?: GhLabel[];
+  repository: {
+    name: string;
+    nameWithOwner: string;
+  };
+  author?: GhAuthor;
+}
+
 interface GhGraphqlRadarPr {
   number: number;
   title: string;
@@ -148,6 +165,21 @@ interface GhGraphqlRepoPage {
 
 const RADAR_RETRY_ATTEMPTS = 2;
 const RADAR_GH_TIMEOUT_MS = 12_000;
+const DIRECT_REVIEW_SEARCH_LIMIT = 100;
+const DIRECT_REVIEW_DETAIL_CONCURRENCY = 6;
+const DIRECT_REVIEW_SEARCH_FIELDS = [
+  'number',
+  'title',
+  'state',
+  'isDraft',
+  'url',
+  'body',
+  'createdAt',
+  'updatedAt',
+  'labels',
+  'repository',
+  'author',
+].join(',');
 
 const RADAR_PR_NODE_FIELDS = `
   number
@@ -477,6 +509,38 @@ function buildPullRequest(raw: GhRadarPr, repo: string): PullRequest {
   };
 }
 
+function buildSearchPullRequest(raw: GhSearchPr): PullRequest {
+  return {
+    key: `${raw.repository.nameWithOwner}#${raw.number}`,
+    number: raw.number,
+    title: raw.title,
+    body: raw.body ?? '',
+    url: raw.url,
+    repository: {
+      name: raw.repository.name,
+      nameWithOwner: raw.repository.nameWithOwner,
+    },
+    author: normalizeAuthor(raw.author),
+    headRefName: '',
+    baseRefName: '',
+    isDraft: raw.isDraft,
+    state: normalizeState(raw.state),
+    mergeable: 'UNKNOWN',
+    mergeStateStatus: 'UNKNOWN',
+    reviewDecision: '',
+    reviews: [],
+    comments: [],
+    checks: [],
+    labels: (raw.labels ?? []).map(normalizeLabel),
+    reviewRequests: [],
+    additions: 0,
+    deletions: 0,
+    changedFiles: 0,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
 function getFilePaths(raw: GhRadarPr): string[] {
   const files = raw.files ?? [];
   const paths: string[] = [];
@@ -527,6 +591,21 @@ function shouldExcludePr(
     return true;
   }
 
+  return false;
+}
+
+function shouldExcludeDirectReviewPr(
+  pr: PullRequest,
+  radarConfig: RadarConfig,
+  viewerLogin: string
+): boolean {
+  const author = pr.author.login.toLowerCase();
+  if (radarConfig.excludeBotDrafts && pr.author.isBot && pr.isDraft) {
+    return true;
+  }
+  if (radarConfig.excludeOwnPrs && author === viewerLogin.toLowerCase()) {
+    return true;
+  }
   return false;
 }
 
@@ -609,6 +688,16 @@ function defaultMergedRelevance(): RelevanceReason[] {
   ];
 }
 
+function directReviewReason(viewerLogin: string): RelevanceReason[] {
+  return [
+    {
+      tier: 'direct',
+      reason: 'You are requested as reviewer',
+      matchedBy: viewerLogin,
+    },
+  ];
+}
+
 function buildMergedSearchQuery(repo: string, mergedAfter: string): string {
   return `repo:${repo} is:pr is:merged merged:>=${mergedAfter}`;
 }
@@ -624,6 +713,50 @@ function splitRepo(repo: string): { owner: string; name: string } {
 function flattenConnectionNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
   if (!nodes) return [];
   return nodes.filter((node): node is T => node !== null);
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const limit = Math.max(1, concurrency);
+  const inFlight = new Set<Promise<void>>();
+
+  for (const item of items) {
+    const task = worker(item);
+    inFlight.add(task);
+
+    const cleanup = () => {
+      inFlight.delete(task);
+    };
+    void task.then(cleanup, cleanup);
+
+    if (inFlight.size >= limit) {
+      await Promise.race(inFlight);
+    }
+  }
+
+  await Promise.all(inFlight);
+}
+
+async function fetchDirectReviewSearchResults(): Promise<GhSearchPr[]> {
+  const json = await runGhWithRetry(
+    [
+      'search',
+      'prs',
+      '--review-requested=@me',
+      '--state=open',
+      `--limit=${DIRECT_REVIEW_SEARCH_LIMIT}`,
+      `--json=${DIRECT_REVIEW_SEARCH_FIELDS}`,
+    ],
+    RADAR_RETRY_ATTEMPTS,
+    RADAR_GH_TIMEOUT_MS
+  );
+
+  return JSON.parse(json) as GhSearchPr[];
 }
 
 function flattenGraphqlRadarPr(raw: GhGraphqlRadarPr): GhRadarPr {
@@ -690,6 +823,38 @@ async function runRepoPullRequestQuery(
 
   return results;
 }
+
+async function collectDirectReviewRadar(
+  config: RadarConfig,
+  viewerLogin: string,
+  openPrs: Map<string, RadarPr>
+): Promise<void> {
+  const seen = new Set<string>();
+  const directRequests = (await fetchDirectReviewSearchResults()).filter(raw => {
+    const key = `${raw.repository.nameWithOwner}#${raw.number}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  await runWithConcurrency(directRequests, DIRECT_REVIEW_DETAIL_CONCURRENCY, async raw => {
+    let pr = buildSearchPullRequest(raw);
+
+    try {
+      const { owner, name } = splitRepo(raw.repository.nameWithOwner);
+      pr = await fetchPrDetail(owner, name, raw.number);
+    } catch {
+      // Fall back to search data when detail hydration fails.
+    }
+
+    if (shouldExcludeDirectReviewPr(pr, config, viewerLogin)) {
+      return;
+    }
+
+    upsertRadarPr(openPrs, pr, directReviewReason(viewerLogin), false);
+  });
+}
+
 async function collectOpenRepoRadar(
   config: RadarConfig,
   repoConfig: RadarRepoConfig,
@@ -766,14 +931,15 @@ export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResu
   const openPrs = new Map<string, RadarPr>();
   const mergedPrs = new Map<string, RadarPr>();
 
-  await Promise.all(
-    config.repos.map(async repoConfig => {
+  await Promise.all([
+    collectDirectReviewRadar(config, viewerLogin, openPrs),
+    ...config.repos.map(async repoConfig => {
       await Promise.all([
         collectOpenRepoRadar(config, repoConfig, viewerLogin, openPrs),
         collectMergedRepoRadar(config, repoConfig, viewerLogin, mergedPrs),
       ]);
-    })
-  );
+    }),
+  ]);
 
   return {
     viewerLogin,
@@ -784,6 +950,9 @@ export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResu
 
 export const _internal = {
   buildMergedSearchQuery,
+  buildSearchPullRequest,
+  directReviewReason,
   limitMergedPrs,
+  shouldExcludeDirectReviewPr,
   shouldExcludePr,
 };

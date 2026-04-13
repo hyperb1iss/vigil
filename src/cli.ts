@@ -383,26 +383,25 @@ async function main(): Promise<void> {
   });
 
   let isFirstRadarChangeBatch = true;
-  const stopRadar =
-    config.radar.enabled && config.radar.repos.length > 0
-      ? startRadarPoller({
-          intervalMs: config.radar.pollIntervalMs,
-          radarConfig: config.radar,
-          onChanges: async changes => {
-            const skipStartupRadarBatch = isFirstRadarChangeBatch;
-            isFirstRadarChangeBatch = false;
-            const shouldNotifyRadar = config.notifications.enabled && !skipStartupRadarBatch;
-            if (shouldNotifyRadar) {
-              dispatchRadarNotifications(changes, store, config.radar.notifications);
-            }
-          },
-          onError: error => {
-            if (process.env.VIGIL_DEBUG) {
-              console.error('[vigil] radar poll error:', error);
-            }
-          },
-        })
-      : undefined;
+  const stopRadar = config.radar.enabled
+    ? startRadarPoller({
+        intervalMs: config.radar.pollIntervalMs,
+        radarConfig: config.radar,
+        onChanges: async changes => {
+          const skipStartupRadarBatch = isFirstRadarChangeBatch;
+          isFirstRadarChangeBatch = false;
+          const shouldNotifyRadar = config.notifications.enabled && !skipStartupRadarBatch;
+          if (shouldNotifyRadar) {
+            dispatchRadarNotifications(changes, store, config.radar.notifications);
+          }
+        },
+        onError: error => {
+          if (process.env.VIGIL_DEBUG) {
+            console.error('[vigil] radar poll error:', error);
+          }
+        },
+      })
+    : undefined;
 
   const stopExecutor = startActionExecutor(undefined, { repoContexts });
 

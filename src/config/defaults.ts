@@ -27,7 +27,7 @@ export const defaultConfig: VigilConfig = {
     dashboardFeedMode: 'mine',
   },
   radar: {
-    enabled: false,
+    enabled: true,
     repos: [],
     teams: [],
     pollIntervalMs: 60_000,
