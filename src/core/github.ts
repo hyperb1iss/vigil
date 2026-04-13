@@ -227,7 +227,13 @@ export async function runGh(args: string[], timeoutMs = DEFAULT_GH_TIMEOUT_MS): 
         } catch {
           // best effort kill; timeout error still surfaces
         }
-        reject(new GhError(`gh ${args.join(' ')} timed out after ${timeoutMs}ms`, 124, 'timeout'));
+        reject(
+          new GhError(
+            `gh ${formatGhArgsForError(args)} timed out after ${timeoutMs}ms`,
+            124,
+            'timeout'
+          )
+        );
       }, timeoutMs);
     });
 
@@ -322,10 +328,45 @@ function throwClassifiedError(exitCode: number, stderr: string, args: string[]):
   }
 
   throw new GhError(
-    `gh ${args.join(' ')} failed (exit ${exitCode}): ${stderr.slice(0, 500)}`,
+    `gh ${formatGhArgsForError(args)} failed (exit ${exitCode}): ${stderr.slice(0, 500)}`,
     exitCode,
     stderr
   );
+}
+
+function formatGhArgsForError(args: string[]): string {
+  const redacted: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === undefined) {
+      continue;
+    }
+
+    if (arg === '--body' || arg === '--field' || arg === '--raw-field' || arg === '--input') {
+      redacted.push(arg);
+      if (args[i + 1] !== undefined) {
+        redacted.push('<redacted>');
+        i += 1;
+      }
+      continue;
+    }
+
+    if (
+      arg.startsWith('body=') ||
+      arg.startsWith('input=') ||
+      arg.startsWith('message=') ||
+      arg.startsWith('comment=')
+    ) {
+      const key = arg.split('=')[0] ?? 'value';
+      redacted.push(`${key}=<redacted>`);
+      continue;
+    }
+
+    redacted.push(arg);
+  }
+
+  return redacted.join(' ');
 }
 
 // ─── Data Normalization ─────────────────────────────────────────────────────
@@ -841,4 +882,5 @@ export const _internal = {
   buildPrFromSearch,
   carryForwardKnown,
   isTransientGhFailure,
+  formatGhArgsForError,
 };

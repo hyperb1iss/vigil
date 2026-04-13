@@ -19,9 +19,8 @@ import type { ChecksChangedData, PrEvent, ReviewSubmittedData } from '../types/e
 import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
-import { fsTools } from './tools/fs.js';
-import { gitTools } from './tools/git.js';
-import { githubTools } from './tools/github.js';
+import { createFsTools } from './tools/fs.js';
+import { createGitTools } from './tools/git.js';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -47,14 +46,6 @@ Rules:
 - If you can't fix the issue, explain why clearly
 
 After fixing, summarize what you changed and why.`;
-
-// ─── MCP Server ──────────────────────────────────────────────────────────────
-
-const fixMcpServer = createSdkMcpServer({
-  name: 'vigil-fix-tools',
-  version: '0.1.0',
-  tools: [...githubTools, ...gitTools, ...fsTools],
-});
 
 // ─── Prompt Builder ──────────────────────────────────────────────────────────
 
@@ -177,6 +168,12 @@ export async function runFixAgent(
   });
 
   try {
+    const fixMcpServer = createSdkMcpServer({
+      name: 'vigil-fix-tools',
+      version: '0.1.0',
+      tools: [...createGitTools(worktreePath), ...createFsTools(worktreePath)],
+    });
+
     const prompt = buildPrompt(event, pr, worktreePath);
     const queryMark = markAgentQuery('fix', pr.key, prompt, runId);
     if (queryMark.repeatedWithinWindow) {
@@ -197,8 +194,6 @@ export async function runFixAgent(
         model: 'claude-sonnet-4-6',
         systemPrompt: SYSTEM_PROMPT,
         cwd: worktreePath,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
         persistSession: false,
         maxTurns: 15,
         maxBudgetUsd: 0.5,

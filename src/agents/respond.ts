@@ -6,7 +6,7 @@
  */
 
 import type { SDKAssistantMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 
 import { getKnowledgeAsContext } from '../learning/knowledge.js';
 import { vigilStore } from '../store/index.js';
@@ -15,15 +15,6 @@ import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
-import { githubTools } from './tools/github.js';
-
-// ─── MCP Server ──────────────────────────────────────────────────────────────
-
-const respondMcp = createSdkMcpServer({
-  name: 'vigil-respond',
-  version: '0.1.0',
-  tools: githubTools,
-});
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -147,9 +138,6 @@ export async function runRespondAgent(event: PrEvent, pr: PullRequest): Promise<
         maxTurns: 5,
         maxBudgetUsd: 0.15,
         persistSession: false,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
-        mcpServers: { 'vigil-respond': respondMcp },
         tools: [],
       },
     });

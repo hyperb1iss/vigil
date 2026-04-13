@@ -18,6 +18,7 @@ const {
   buildPrFromDetail,
   buildPrFromSearch,
   carryForwardKnown,
+  formatGhArgsForError,
   isTransientGhFailure,
 } = _internal;
 
@@ -393,6 +394,20 @@ describe('throwClassifiedError', () => {
         expect(e.stderr).toBe('detailed error message');
       }
     }
+  });
+});
+
+describe('formatGhArgsForError', () => {
+  test('redacts --body payloads', () => {
+    expect(formatGhArgsForError(['pr', 'comment', '1', '--body', 'secret text'])).toBe(
+      'pr comment 1 --body <redacted>'
+    );
+  });
+
+  test('redacts body-like field payloads', () => {
+    expect(formatGhArgsForError(['api', '/repos/x/y', '--field', 'body=secret text'])).toBe(
+      'api /repos/x/y --field <redacted>'
+    );
   });
 });
 

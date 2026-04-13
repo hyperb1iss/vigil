@@ -230,8 +230,6 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
         maxTurns: 3,
         maxBudgetUsd: 0.05,
         persistSession: false,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
         tools: [],
         mcpServers: { 'vigil-triage': triageMcpServer },
         outputFormat: {

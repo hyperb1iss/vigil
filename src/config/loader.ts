@@ -1,31 +1,24 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+
+import { ZodError } from 'zod';
 
 import type { RepoConfig, VigilConfig } from '../types/index.js';
 import { defaultConfig } from './defaults.js';
+import type { GlobalConfigOverrides } from './schema.js';
+import { formatZodError, globalConfigOverridesSchema, repoConfigSchema } from './schema.js';
 import { paths } from './xdg.js';
 
 /** Deep-merge user overrides onto defaults (single level of nesting). */
-function mergeConfig(base: VigilConfig, overrides: Partial<VigilConfig>): VigilConfig {
+function mergeConfig(base: VigilConfig, overrides: GlobalConfigOverrides): VigilConfig {
   return {
     pollIntervalMs: overrides.pollIntervalMs ?? base.pollIntervalMs,
     defaultMode: overrides.defaultMode ?? base.defaultMode,
-    notifications: { ...base.notifications, ...overrides.notifications },
-    agent: { ...base.agent, ...overrides.agent },
-    learning: { ...base.learning, ...overrides.learning },
-    display: { ...base.display, ...overrides.display },
-    radar: {
-      ...base.radar,
-      ...overrides.radar,
-      merged: { ...base.radar.merged, ...overrides.radar?.merged },
-      notifications: {
-        ...base.radar.notifications,
-        ...overrides.radar?.notifications,
-      },
-      teams: overrides.radar?.teams ?? base.radar.teams,
-      repos: overrides.radar?.repos ?? base.radar.repos,
-    },
+    notifications: mergeNotifications(base, overrides),
+    agent: mergeAgentConfig(base, overrides),
+    learning: mergeLearningConfig(base, overrides),
+    display: mergeDisplayConfig(base, overrides),
+    radar: mergeRadarConfig(base, overrides),
   };
 }
 
@@ -34,16 +27,18 @@ export function loadGlobalConfig(): VigilConfig {
   const configPath = paths.configFile();
 
   if (!existsSync(configPath)) {
-    return { ...defaultConfig };
+    return structuredClone(defaultConfig);
   }
 
   try {
     const raw = readFileSync(configPath, 'utf-8');
-    const overrides = JSON.parse(raw) as Partial<VigilConfig>;
-    return mergeConfig(defaultConfig, overrides);
-  } catch {
-    // Invalid user config should not crash the app; fall back to defaults.
-    return { ...defaultConfig };
+    const parsed = JSON.parse(raw) as unknown;
+    const overrides = globalConfigOverridesSchema.parse(parsed);
+    return mergeConfig(structuredClone(defaultConfig), overrides);
+  } catch (error) {
+    const formattedReason = formatLoaderError(error);
+    console.error(`[vigil] ignoring invalid config at ${configPath}: ${formattedReason}`);
+    return structuredClone(defaultConfig);
   }
 }
 
@@ -61,22 +56,95 @@ export async function loadRepoConfig(repoDir: string): Promise<RepoConfig | null
   if (existsSync(jsonPath)) {
     try {
       const raw = readFileSync(jsonPath, 'utf-8');
-      return JSON.parse(raw) as RepoConfig;
-    } catch {
+      const parsed = JSON.parse(raw) as unknown;
+      return repoConfigSchema.parse(parsed);
+    } catch (error) {
+      const formattedReason = formatLoaderError(error);
+      console.error(`[vigil] ignoring invalid repo config at ${jsonPath}: ${formattedReason}`);
       return null;
     }
   }
 
   const rcPath = join(repoDir, '.vigilrc.ts');
 
-  if (!existsSync(rcPath)) {
-    return null;
+  if (existsSync(rcPath)) {
+    console.error(
+      `[vigil] ignoring ${rcPath}: TypeScript repo config loading is disabled until a trusted loader exists`
+    );
   }
 
-  if (process.env.VIGIL_ALLOW_TS_CONFIG !== '1') {
-    return null;
+  return null;
+}
+
+function formatLoaderError(error: unknown): string {
+  if (error instanceof ZodError) {
+    return formatZodError(error);
   }
 
-  const mod = (await import(pathToFileURL(rcPath).href)) as { default?: RepoConfig };
-  return mod.default ?? null;
+  return error instanceof Error ? error.message : String(error);
+}
+
+function mergeNotifications(base: VigilConfig, overrides: GlobalConfigOverrides) {
+  return {
+    enabled: overrides.notifications?.enabled ?? base.notifications.enabled,
+    onCiFailure: overrides.notifications?.onCiFailure ?? base.notifications.onCiFailure,
+    onBlockingReview:
+      overrides.notifications?.onBlockingReview ?? base.notifications.onBlockingReview,
+    onReadyToMerge: overrides.notifications?.onReadyToMerge ?? base.notifications.onReadyToMerge,
+    onNewComment: overrides.notifications?.onNewComment ?? base.notifications.onNewComment,
+  };
+}
+
+function mergeAgentConfig(base: VigilConfig, overrides: GlobalConfigOverrides) {
+  return {
+    model: overrides.agent?.model ?? base.agent.model,
+    maxAutoFixesPerPr: overrides.agent?.maxAutoFixesPerPr ?? base.agent.maxAutoFixesPerPr,
+    autoRespondToScopeCreep:
+      overrides.agent?.autoRespondToScopeCreep ?? base.agent.autoRespondToScopeCreep,
+  };
+}
+
+function mergeLearningConfig(base: VigilConfig, overrides: GlobalConfigOverrides) {
+  return {
+    enabled: overrides.learning?.enabled ?? base.learning.enabled,
+    backend: overrides.learning?.backend ?? base.learning.backend,
+    captureAfterMerge: overrides.learning?.captureAfterMerge ?? base.learning.captureAfterMerge,
+  };
+}
+
+function mergeDisplayConfig(base: VigilConfig, overrides: GlobalConfigOverrides) {
+  return {
+    dormantThresholdHours:
+      overrides.display?.dormantThresholdHours ?? base.display.dormantThresholdHours,
+    maxPrsOnDashboard: overrides.display?.maxPrsOnDashboard ?? base.display.maxPrsOnDashboard,
+    colorScheme: overrides.display?.colorScheme ?? base.display.colorScheme,
+    dashboardFeedMode: overrides.display?.dashboardFeedMode ?? base.display.dashboardFeedMode,
+  };
+}
+
+function mergeRadarConfig(base: VigilConfig, overrides: GlobalConfigOverrides) {
+  return {
+    enabled: overrides.radar?.enabled ?? base.radar.enabled,
+    repos: overrides.radar?.repos ?? base.radar.repos,
+    teams: overrides.radar?.teams ?? base.radar.teams,
+    pollIntervalMs: overrides.radar?.pollIntervalMs ?? base.radar.pollIntervalMs,
+    merged: {
+      limit: overrides.radar?.merged?.limit ?? base.radar.merged.limit,
+      maxAgeHours: overrides.radar?.merged?.maxAgeHours ?? base.radar.merged.maxAgeHours,
+      domainOnly: overrides.radar?.merged?.domainOnly ?? base.radar.merged.domainOnly,
+    },
+    notifications: {
+      onDirectReviewRequest:
+        overrides.radar?.notifications?.onDirectReviewRequest ??
+        base.radar.notifications.onDirectReviewRequest,
+      onNewDomainPr:
+        overrides.radar?.notifications?.onNewDomainPr ?? base.radar.notifications.onNewDomainPr,
+      onMergedDomainPr:
+        overrides.radar?.notifications?.onMergedDomainPr ??
+        base.radar.notifications.onMergedDomainPr,
+    },
+    excludeBotDrafts: overrides.radar?.excludeBotDrafts ?? base.radar.excludeBotDrafts,
+    excludeOwnPrs: overrides.radar?.excludeOwnPrs ?? base.radar.excludeOwnPrs,
+    staleCutoffDays: overrides.radar?.staleCutoffDays ?? base.radar.staleCutoffDays,
+  };
 }

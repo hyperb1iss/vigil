@@ -165,8 +165,6 @@ export async function runLearningAgent(event: PrEvent, pr: PullRequest): Promise
       options: {
         model: 'claude-haiku-4-5-20251001',
         systemPrompt: SYSTEM_PROMPT,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
         persistSession: false,
         maxTurns: 5,
         maxBudgetUsd: 0.05,

@@ -16,16 +16,8 @@ import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
-import { fsTools } from './tools/fs.js';
-import { gitTools } from './tools/git.js';
-
-// ─── MCP Server ──────────────────────────────────────────────────────────────
-
-const rebaseMcpServer = createSdkMcpServer({
-  name: 'vigil-rebase',
-  version: '0.1.0',
-  tools: [...gitTools, ...fsTools],
-});
+import { createFsTools } from './tools/fs.js';
+import { createGitTools } from './tools/git.js';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -114,6 +106,12 @@ export async function runRebaseAgent(
   const collected: SDKMessage[] = [];
 
   try {
+    const rebaseMcpServer = createSdkMcpServer({
+      name: 'vigil-rebase',
+      version: '0.1.0',
+      tools: [...createGitTools(worktreePath), ...createFsTools(worktreePath)],
+    });
+
     const stream = query({
       prompt,
       options: {
@@ -122,8 +120,6 @@ export async function runRebaseAgent(
         cwd: worktreePath,
         mcpServers: { 'vigil-rebase': rebaseMcpServer },
         tools: [],
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
         persistSession: false,
         maxTurns: 20,
         maxBudgetUsd: 0.5,

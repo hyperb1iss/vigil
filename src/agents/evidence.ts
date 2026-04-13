@@ -16,22 +16,13 @@ import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
-import { fsTools } from './tools/fs.js';
-import { gitTools } from './tools/git.js';
-import { githubTools } from './tools/github.js';
+import { createFsTools } from './tools/fs.js';
+import { createGitTools } from './tools/git.js';
 
 interface TextBlock {
   type: 'text';
   text: string;
 }
-
-// ─── MCP Server ──────────────────────────────────────────────────────────────
-
-const evidenceMcpServer = createSdkMcpServer({
-  name: 'vigil-evidence',
-  version: '0.1.0',
-  tools: [...githubTools, ...gitTools, ...fsTools],
-});
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -142,6 +133,15 @@ export async function runEvidenceAgent(
   });
 
   try {
+    const evidenceTools = worktreePath
+      ? [...createGitTools(worktreePath), ...createFsTools(worktreePath)]
+      : [];
+    const evidenceMcpServer = createSdkMcpServer({
+      name: 'vigil-evidence',
+      version: '0.1.0',
+      tools: evidenceTools,
+    });
+
     const prompt = buildEvidencePrompt(event, pr, worktreePath);
     const queryMark = markAgentQuery('evidence', pr.key, prompt, runId);
     if (queryMark.repeatedWithinWindow) {
@@ -165,8 +165,6 @@ export async function runEvidenceAgent(
         maxTurns: 10,
         maxBudgetUsd: 0.1,
         persistSession: false,
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
         tools: [],
         mcpServers: { 'vigil-evidence': evidenceMcpServer },
       },
