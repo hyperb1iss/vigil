@@ -90,6 +90,7 @@ export async function poll(
 
     // Diff against previous
     const events = diffPrs(state.prs, stabilizedCurrentMap);
+    store.getState().recordPrEvents(events);
 
     // Classify states
     const dormantThreshold = state.config.display.dormantThresholdHours;

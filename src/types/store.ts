@@ -1,5 +1,6 @@
 import type { AgentRun, CompletedAction, ProposedAction } from './agents.js';
 import type { VigilConfig } from './config.js';
+import type { PrEvent } from './events.js';
 import type { PrState, PullRequest } from './pr.js';
 import type { DashboardFeedMode, RadarFilter, RadarPr } from './radar.js';
 
@@ -19,6 +20,7 @@ export interface Notification {
 export interface VigilStore {
   // PR data
   prs: Map<string, PullRequest>;
+  prEvents: Map<string, PrEvent[]>;
   prStates: Map<string, PrState>;
   lastPollAt: string | null;
   isPolling: boolean;
@@ -55,6 +57,7 @@ export interface VigilStore {
 
   // PR actions
   setPrs: (prs: Map<string, PullRequest>) => void;
+  recordPrEvents: (events: PrEvent[]) => void;
   setPrState: (key: string, state: PrState) => void;
   updatePr: (key: string, update: Partial<PullRequest>) => void;
   setRadarPrs: (prs: Map<string, RadarPr>) => void;

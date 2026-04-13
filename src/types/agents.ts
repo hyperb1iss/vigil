@@ -50,6 +50,7 @@ export type ActionType =
   | 'dismiss';
 
 export interface ActionExecutionContext {
+  commentUrl?: string | undefined;
   event?: PrEvent | undefined;
   worktreePath?: string | undefined;
 }

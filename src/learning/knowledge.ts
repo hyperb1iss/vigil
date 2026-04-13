@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { paths } from '../config/xdg.js';
@@ -32,7 +32,9 @@ export function getKnowledgeAsContext(): string {
 export function writeKnowledge(content: string): void {
   const file = paths.knowledgeFile();
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content, 'utf-8');
+  const tempFile = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  writeFileSync(tempFile, content, 'utf-8');
+  renameSync(tempFile, file);
 }
 
 /** Create the knowledge file with initial structure if it doesn't already exist. */

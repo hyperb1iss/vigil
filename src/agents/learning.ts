@@ -99,10 +99,7 @@ Focus on patterns that will help future triage and fix decisions.`;
 
 /** Collect all events for this PR from the store (if available). */
 function collectPrEvents(prKey: string): PrEvent[] {
-  // The store doesn't persist events yet — return empty for now.
-  // When event storage lands, this will pull the full timeline.
-  void prKey;
-  return [];
+  return vigilStore.getState().prEvents.get(prKey) ?? [];
 }
 
 /** Build the user prompt describing the PR lifecycle. */

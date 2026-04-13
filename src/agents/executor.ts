@@ -1,4 +1,4 @@
-import { mergePr, postComment, runGh } from '../core/github.js';
+import { editComment, mergePr, postComment, runGh } from '../core/github.js';
 import { createWorktree, getWorktreeStatus, resolveWorktreeTargetDir } from '../core/worktrees.js';
 import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/agents.js';
@@ -18,6 +18,7 @@ interface PrRef {
 interface ExecutorOptions {
   repoContexts?: Map<string, RepoRuntimeContext> | undefined;
   createWorktreeFn?: typeof createWorktree;
+  editCommentFn?: typeof editComment;
   executeFixActionFn?: typeof executeFixAction;
   executeRebaseActionFn?: typeof executeRebaseAction;
   getWorktreeStatusFn?: typeof getWorktreeStatus;
@@ -65,9 +66,13 @@ export async function executeAction(
     case 'edit_comment': {
       const ref = parsePrKey(action.prKey);
       const body = requireDetail(action);
-      // We do not track stable comment IDs yet; post as a follow-up.
-      await postComment(ref.owner, ref.repo, ref.number, body);
-      return `Posted evidence follow-up on ${action.prKey}.`;
+      const commentUrl = action.context?.commentUrl;
+      if (!commentUrl) {
+        throw new Error(`Action "${action.type}" is missing comment context.`);
+      }
+      const editCommentFn = options?.editCommentFn ?? editComment;
+      await editCommentFn(ref.owner, ref.repo, commentUrl, body);
+      return `Updated evidence comment on ${action.prKey}.`;
     }
 
     case 'merge': {

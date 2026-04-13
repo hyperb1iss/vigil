@@ -4,6 +4,7 @@ import { createStore } from 'zustand/vanilla';
 
 import { defaultConfig } from '../config/defaults.js';
 import type { AgentRun, ProposedAction } from '../types/agents.js';
+import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import type { Notification, VigilStore } from '../types/store.js';
 import { createAgentSlice } from './slices/agents.js';
@@ -57,6 +58,7 @@ describe('PrSlice', () => {
     const store = createTestStore();
     const state = store.getState();
     expect(state.prs.size).toBe(0);
+    expect(state.prEvents.size).toBe(0);
     expect(state.prStates.size).toBe(0);
     expect(state.lastPollAt).toBeNull();
     expect(state.isPolling).toBe(false);
@@ -71,6 +73,35 @@ describe('PrSlice', () => {
 
     expect(store.getState().prs.size).toBe(1);
     expect(store.getState().prs.get('owner/repo#1')).toBeDefined();
+  });
+
+  test('recordPrEvents stores a bounded timeline per PR', () => {
+    const store = createTestStore();
+    const makeEvent = (index: number): PrEvent => ({
+      type: 'comment_added',
+      prKey: 'owner/repo#1',
+      pr: makePr(),
+      timestamp: `2026-02-18T12:00:${String(index).padStart(2, '0')}Z`,
+      data: {
+        type: 'comment_added',
+        comment: {
+          id: `c${index}`,
+          author: { login: 'reviewer', isBot: false },
+          body: 'nit',
+          createdAt: `2026-02-18T12:00:${String(index).padStart(2, '0')}Z`,
+          url: `https://github.com/owner/repo/pull/1#issuecomment-${index}`,
+        },
+      },
+    });
+
+    store.getState().recordPrEvents(Array.from({ length: 105 }, (_, index) => makeEvent(index)));
+
+    const events = store.getState().prEvents.get('owner/repo#1');
+    expect(events).toHaveLength(100);
+    expect(events?.[0]?.data?.type === 'comment_added' && events[0].data.comment.id).toBe('c5');
+    expect(events?.at(-1)?.data?.type === 'comment_added' && events.at(-1)?.data.comment.id).toBe(
+      'c104'
+    );
   });
 
   test('setPrState sets state for a single PR', () => {

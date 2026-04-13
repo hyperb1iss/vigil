@@ -50,6 +50,26 @@ describe('executeAction', () => {
     expect(executeRebaseActionFn).toHaveBeenCalledTimes(1);
   });
 
+  test('edits an existing comment when comment context is present', async () => {
+    const editCommentFn = mock(async () => undefined);
+
+    const output = await executeAction(
+      makeAction({
+        type: 'edit_comment',
+        detail: 'Updated evidence',
+        context: {
+          commentUrl: 'https://github.com/owner/repo/pull/1#issuecomment-123',
+        },
+      }),
+      {
+        editCommentFn,
+      }
+    );
+
+    expect(output).toBe('Updated evidence comment on owner/repo#1.');
+    expect(editCommentFn).toHaveBeenCalledTimes(1);
+  });
+
   test('creates a worktree and updates the PR state when context is available', async () => {
     vigilStore.getState().setPrs(
       new Map([

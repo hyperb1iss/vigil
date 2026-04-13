@@ -24,6 +24,12 @@ interface TextBlock {
   text: string;
 }
 
+function findEvidenceCommentTarget(pr: PullRequest): string | undefined {
+  return [...pr.comments]
+    .reverse()
+    .find(comment => /(^|\n)#{1,6}\s*(verification|regression)\b/i.test(comment.body))?.url;
+}
+
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
 const EVIDENCE_SYSTEM_PROMPT = `You are Vigil's evidence agent. Your job is to gather and present verification evidence for pull requests.
@@ -209,13 +215,17 @@ export async function runEvidenceAgent(
       evidenceText = currentRun?.streamingOutput ?? '';
     }
 
+    const targetCommentUrl = findEvidenceCommentTarget(pr);
     const action: ProposedAction = {
       id: crypto.randomUUID(),
-      type: 'edit_comment',
+      type: targetCommentUrl ? 'edit_comment' : 'post_comment',
       prKey: pr.key,
       agent: 'evidence',
-      description: 'Update PR comment with verification and regression evidence.',
+      description: targetCommentUrl
+        ? 'Update the existing verification comment with fresh evidence.'
+        : 'Post verification and regression evidence to the PR.',
       detail: evidenceText,
+      context: targetCommentUrl ? { commentUrl: targetCommentUrl } : undefined,
       requiresConfirmation: false,
       status: 'approved',
     };
@@ -258,3 +268,7 @@ export async function runEvidenceAgent(
     };
   }
 }
+
+export const _internal = {
+  findEvidenceCommentTarget,
+};
