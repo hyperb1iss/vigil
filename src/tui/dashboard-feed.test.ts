@@ -87,4 +87,41 @@ describe('buildDashboardItems', () => {
     expect(items[0]?.key).toBe(pr.key);
     expect(items[0]?.source).toBe('mine');
   });
+
+  test('pins active mine PRs ahead of incoming items in activity sort', () => {
+    const mine = makePr('acme/repo#7', { updatedAt: '2026-02-27T00:00:00.000Z' });
+    const incoming = makePr('acme/repo#8', { updatedAt: '2026-02-27T01:00:00.000Z' });
+    const state = baseState('both');
+    state.prs.set(mine.key, mine);
+    state.prStates.set(mine.key, 'waiting');
+    state.radarPrs.set(incoming.key, {
+      pr: incoming,
+      relevance: [{ tier: 'direct', reason: 'You are requested as reviewer', matchedBy: 'me' }],
+      topTier: 'direct',
+      isMerged: false,
+    });
+
+    const items = buildDashboardItems(state);
+
+    expect(items.map(item => item.key)).toEqual([mine.key, incoming.key]);
+  });
+
+  test('pins active mine PRs ahead of incoming items in state sort', () => {
+    const mine = makePr('acme/repo#17');
+    const incoming = makePr('acme/repo#18');
+    const state = baseState('both');
+    state.sortMode = 'state';
+    state.prs.set(mine.key, mine);
+    state.prStates.set(mine.key, 'hot');
+    state.radarPrs.set(incoming.key, {
+      pr: incoming,
+      relevance: [{ tier: 'direct', reason: 'You are requested as reviewer', matchedBy: 'me' }],
+      topTier: 'direct',
+      isMerged: false,
+    });
+
+    const items = buildDashboardItems(state);
+
+    expect(items.map(item => item.key)).toEqual([mine.key, incoming.key]);
+  });
 });

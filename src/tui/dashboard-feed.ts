@@ -30,6 +30,20 @@ function toEpoch(iso: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isActiveMine(item: DashboardItem): boolean {
+  return item.source === 'mine' && item.state !== 'dormant';
+}
+
+function dedupeSourcePriority(item: DashboardItem): number {
+  if (item.source === 'incoming') return 0;
+  if (item.source === 'mine') return 1;
+  return 2;
+}
+
+function pinPriority(item: DashboardItem): number {
+  return isActiveMine(item) ? 0 : 1;
+}
+
 function sourcePriority(item: DashboardItem): number {
   if (item.source === 'incoming') {
     if (item.radar?.topTier === 'direct') return 0;
@@ -98,6 +112,14 @@ export function matchesPr(pr: PullRequest, query: string): boolean {
 
 function sortItems(items: DashboardItem[], sortMode: SortMode): DashboardItem[] {
   return items.sort((a, b) => {
+    if (a.key === b.key) {
+      const duplicateSourceRank = dedupeSourcePriority(a) - dedupeSourcePriority(b);
+      if (duplicateSourceRank !== 0) return duplicateSourceRank;
+    }
+
+    const pinRank = pinPriority(a) - pinPriority(b);
+    if (pinRank !== 0) return pinRank;
+
     if (sortMode === 'state') {
       const rank = stateRank(a) - stateRank(b);
       if (rank !== 0) return rank;
