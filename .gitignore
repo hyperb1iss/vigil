@@ -1,6 +1,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
+/.*.bun-build
+/vigil
 .DS_Store
 coverage/
 .env
