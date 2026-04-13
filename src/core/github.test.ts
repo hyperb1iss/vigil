@@ -20,6 +20,7 @@ const {
   buildPrFromSearch,
   carryForwardKnown,
   findDetailRepos,
+  buildAuthoredOpenSearchQuery,
   formatGhArgsForError,
   isTransientGhFailure,
   mergeKnownIntoCurrent,
@@ -806,6 +807,18 @@ describe('findDetailRepos', () => {
 
     expect(findDetailRepos(repos, searchResults, known, prMap, repoContexts)).toEqual(
       new Set(['owner/repo'])
+    );
+  });
+});
+
+describe('buildAuthoredOpenSearchQuery', () => {
+  test('builds a global authored-open search when no repo is scoped', () => {
+    expect(buildAuthoredOpenSearchQuery()).toBe('is:pr is:open author:@me');
+  });
+
+  test('adds repo scoping without changing the authored-open qualifiers', () => {
+    expect(buildAuthoredOpenSearchQuery('owner/repo')).toBe(
+      'is:pr is:open author:@me repo:owner/repo'
     );
   });
 });

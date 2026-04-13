@@ -16,8 +16,8 @@ export const ghPrComment = tool(
   'gh_pr_comment',
   'Post a new comment on a GitHub pull request.',
   {
-    owner: z.string().describe('Repository owner (e.g. "hyperb1iss")'),
-    repo: z.string().describe('Repository name (e.g. "vigil")'),
+    owner: z.string().describe('Repository owner (e.g. "acme")'),
+    repo: z.string().describe('Repository name (e.g. "webapp")'),
     number: z.number().describe('PR number'),
     body: z.string().describe('Comment body (Markdown)'),
   },

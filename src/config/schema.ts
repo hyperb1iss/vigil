@@ -48,6 +48,7 @@ const radarRepoSchema = z
         })
         .strict()
     ),
+    watchAll: z.boolean().optional(),
     relevantLabels: z.array(z.string().min(1)).optional(),
     watchAuthors: z.array(z.string().min(1)).optional(),
     excludeAuthors: z.array(z.string().min(1)).optional(),

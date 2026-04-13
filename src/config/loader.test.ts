@@ -61,15 +61,15 @@ describe('loadRepoConfig', () => {
       writeFileSync(
         join(repoDir, '.vigilrc.json'),
         JSON.stringify({
-          owner: 'hyperb1iss',
-          repo: 'vigil',
+          owner: 'acme',
+          repo: 'webapp',
           baseBranch: 'main',
           alwaysConfirm: ['merge'],
         })
       );
 
       const config = await loadRepoConfig(repoDir);
-      expect(config?.owner).toBe('hyperb1iss');
+      expect(config?.owner).toBe('acme');
       expect(config?.alwaysConfirm).toEqual(['merge']);
     } finally {
       rmSync(repoDir, { recursive: true, force: true });
@@ -81,7 +81,7 @@ describe('loadRepoConfig', () => {
     try {
       writeFileSync(
         join(repoDir, '.vigilrc.ts'),
-        'export default { owner: "hyperb1iss", repo: "vigil", baseBranch: "main" };'
+        'export default { owner: "acme", repo: "webapp", baseBranch: "main" };'
       );
 
       const errorSpy = mock(() => undefined);

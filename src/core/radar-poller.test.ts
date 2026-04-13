@@ -126,7 +126,7 @@ describe('radar poller internals', () => {
             additions: 0,
             deletions: 0,
             changedFiles: 0,
-            reviewRequests: [{ login: 'hyperb1iss' }],
+            reviewRequests: [{ login: 'reviewer' }],
           }),
         },
       ],

@@ -2,8 +2,8 @@
  * GitHub data layer — wraps the `gh` CLI for fetching PR data.
  *
  * Uses a two-pass approach for fetchMyOpenPrs:
- *   1. gh search prs — broad discovery (lacks reviews, checks, mergeable)
- *   2. gh pr list per-repo — full detail fill-in
+ *   1. GraphQL search for broad authored-PR discovery
+ *   2. Repo-scoped GraphQL search for detailed fill-in
  */
 
 import type {
@@ -151,27 +151,96 @@ interface GhAssignee {
   name?: string;
 }
 
+interface GhConnection<T> {
+  nodes?: Array<T | null> | null;
+  pageInfo?: {
+    hasNextPage: boolean;
+    endCursor?: string | null;
+  } | null;
+}
+
+interface GhGraphqlSearchPr {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  repository: { name: string; nameWithOwner: string };
+  labels?: GhConnection<GhLabel> | null;
+  author?: GhAuthor;
+}
+
+interface GhGraphqlDetailPr {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  headRefName: string;
+  baseRefName: string;
+  mergeable: string;
+  mergeStateStatus: string;
+  reviewDecision: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergedAt?: string | null;
+  labels?: GhConnection<GhLabel> | null;
+  reviews?: GhConnection<GhReview> | null;
+  comments?: GhConnection<GhCommentNode> | null;
+  statusCheckRollup?: {
+    contexts?: GhConnection<GhCheckRollupItem> | null;
+  } | null;
+  reviewRequests?: GhConnection<{
+    requestedReviewer?: {
+      login?: string;
+      name?: string;
+      slug?: string;
+    } | null;
+  }> | null;
+  assignees?: GhConnection<GhAssignee> | null;
+  author?: GhAuthor;
+}
+
+interface GhGraphqlSearchPage<TNode> {
+  data?: {
+    search?: {
+      nodes?: Array<TNode | null> | null;
+    } | null;
+  } | null;
+}
+
+interface GhGraphqlRepositoryPage<TNode> {
+  data?: {
+    repository?: {
+      pullRequests?: GhConnection<TNode> | null;
+    } | null;
+  } | null;
+}
+
+interface GhGraphqlViewerRepositoriesPage {
+  data?: {
+    viewer?: {
+      repositories?: GhConnection<{
+        nameWithOwner: string;
+      }> | null;
+    } | null;
+  } | null;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const DEFAULT_GH_TIMEOUT_MS = 30_000;
 const DETAIL_FETCH_CONCURRENCY = 8;
 const GH_TRANSIENT_RETRIES = 3;
 const GH_RETRY_BASE_DELAY_MS = 400;
-
-/** Fields requested for the search pass (broad discovery) */
-const SEARCH_FIELDS = [
-  'number',
-  'title',
-  'repository',
-  'state',
-  'isDraft',
-  'labels',
-  'createdAt',
-  'updatedAt',
-  'url',
-  'body',
-  'author',
-].join(',');
+const GH_GRAPHQL_SEARCH_CEILING = 1000;
 
 /** Fields requested for per-repo detail pass */
 const DETAIL_FIELDS = [
@@ -200,6 +269,335 @@ const DETAIL_FIELDS = [
   'mergedAt',
   'author',
 ].join(',');
+
+const GRAPHQL_SEARCH_DISCOVERY_QUERY = `
+  query($searchQuery: String!, $endCursor: String) {
+    search(query: $searchQuery, type: ISSUE, first: 100, after: $endCursor) {
+      nodes {
+        ... on PullRequest {
+          number
+          title
+          state
+          isDraft
+          url
+          body
+          createdAt
+          updatedAt
+          repository {
+            name
+            nameWithOwner
+          }
+          labels(first: 100) {
+            nodes {
+              id
+              name
+              color
+            }
+          }
+          author {
+            login
+            type: __typename
+            ... on User {
+              name
+            }
+            ... on Organization {
+              name
+            }
+            ... on EnterpriseUserAccount {
+              name
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+const GRAPHQL_DETAIL_DISCOVERY_QUERY = `
+  query($searchQuery: String!, $endCursor: String) {
+    search(query: $searchQuery, type: ISSUE, first: 100, after: $endCursor) {
+      nodes {
+        ... on PullRequest {
+          number
+          title
+          state
+          isDraft
+          url
+          body
+          createdAt
+          updatedAt
+          headRefName
+          baseRefName
+          mergeable
+          mergeStateStatus
+          reviewDecision
+          additions
+          deletions
+          changedFiles
+          mergedAt
+          labels(first: 100) {
+            nodes {
+              id
+              name
+              color
+            }
+          }
+          reviews(first: 100) {
+            nodes {
+              id
+              body
+              state
+              submittedAt
+              author {
+                login
+                type: __typename
+                ... on User {
+                  name
+                }
+                ... on Organization {
+                  name
+                }
+                ... on EnterpriseUserAccount {
+                  name
+                }
+              }
+            }
+          }
+          comments(first: 100) {
+            nodes {
+              id
+              body
+              createdAt
+              url
+              author {
+                login
+                type: __typename
+                ... on User {
+                  name
+                }
+                ... on Organization {
+                  name
+                }
+                ... on EnterpriseUserAccount {
+                  name
+                }
+              }
+            }
+          }
+          statusCheckRollup {
+            contexts(first: 100) {
+              nodes {
+                __typename
+                ... on CheckRun {
+                  name
+                  status
+                  conclusion
+                  workflowName
+                  detailsUrl
+                }
+                ... on StatusContext {
+                  context
+                  state
+                  targetUrl
+                }
+              }
+            }
+          }
+          reviewRequests(first: 100) {
+            nodes {
+              requestedReviewer {
+                ... on User {
+                  login
+                  name
+                }
+                ... on Team {
+                  slug
+                  name
+                }
+              }
+            }
+          }
+          assignees(first: 100) {
+            nodes {
+              login
+              name
+            }
+          }
+          author {
+            login
+            type: __typename
+            ... on User {
+              name
+            }
+            ... on Organization {
+              name
+            }
+            ... on EnterpriseUserAccount {
+              name
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
+  query($owner: String!, $repo: String!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, after: $endCursor, states: [OPEN], orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          number
+          title
+          state
+          isDraft
+          url
+          body
+          createdAt
+          updatedAt
+          headRefName
+          baseRefName
+          mergeable
+          mergeStateStatus
+          reviewDecision
+          additions
+          deletions
+          changedFiles
+          mergedAt
+          labels(first: 100) {
+            nodes {
+              id
+              name
+              color
+            }
+          }
+          reviews(first: 100) {
+            nodes {
+              id
+              body
+              state
+              submittedAt
+              author {
+                login
+                type: __typename
+                ... on User {
+                  name
+                }
+                ... on Organization {
+                  name
+                }
+                ... on EnterpriseUserAccount {
+                  name
+                }
+              }
+            }
+          }
+          comments(first: 100) {
+            nodes {
+              id
+              body
+              createdAt
+              url
+              author {
+                login
+                type: __typename
+                ... on User {
+                  name
+                }
+                ... on Organization {
+                  name
+                }
+                ... on EnterpriseUserAccount {
+                  name
+                }
+              }
+            }
+          }
+          statusCheckRollup {
+            contexts(first: 100) {
+              nodes {
+                __typename
+                ... on CheckRun {
+                  name
+                  status
+                  conclusion
+                  workflowName
+                  detailsUrl
+                }
+                ... on StatusContext {
+                  context
+                  state
+                  targetUrl
+                }
+              }
+            }
+          }
+          reviewRequests(first: 100) {
+            nodes {
+              requestedReviewer {
+                ... on User {
+                  login
+                  name
+                }
+                ... on Team {
+                  slug
+                  name
+                }
+              }
+            }
+          }
+          assignees(first: 100) {
+            nodes {
+              login
+              name
+            }
+          }
+          author {
+            login
+            type: __typename
+            ... on User {
+              name
+            }
+            ... on Organization {
+              name
+            }
+            ... on EnterpriseUserAccount {
+              name
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_VIEWER_REPOSITORIES_QUERY = `
+  query($endCursor: String) {
+    viewer {
+      repositories(first: 100, after: $endCursor, affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]) {
+        nodes {
+          nameWithOwner
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
 
 // ─── Core: Shell out to gh ──────────────────────────────────────────────────
 
@@ -639,26 +1037,12 @@ export async function fetchMyOpenPrs(
   repoContexts?: Map<string, RepoRuntimeContext>
 ): Promise<PullRequest[]> {
   // Pass 1: Discover open PRs via search
-  const searchArgs = [
-    'search',
-    'prs',
-    '--author=@me',
-    '--state=open',
-    `--json=${SEARCH_FIELDS}`,
-    '--limit=200',
-  ];
-
-  // If repos specified, add repo qualifiers
-  if (repos && repos.length > 0) {
-    for (const repo of repos) {
-      searchArgs.push(`--repo=${repo}`);
-    }
+  const discovery = await fetchSearchDiscoveryResults(repos);
+  if (discovery.hitSearchCeiling) {
+    return fetchRepositoryFallbackOpenPrs(repos, repoContexts);
   }
 
-  const searchJson = await runGhWithRetry(searchArgs);
-  if (!searchJson) return [];
-
-  const searchResults = JSON.parse(searchJson) as GhSearchPr[];
+  const searchResults = discovery.results;
   if (searchResults.length === 0) return [];
 
   // Collect unique repos from search results
@@ -684,19 +1068,7 @@ export async function fetchMyOpenPrs(
   // Pass 2: Fetch full detail only for stale repos, with bounded concurrency.
   await runWithConcurrency([...detailRepos], DETAIL_FETCH_CONCURRENCY, async nameWithOwner => {
     try {
-      const detailJson = await runGh([
-        'pr',
-        'list',
-        `--repo=${nameWithOwner}`,
-        '--author=@me',
-        '--state=open',
-        '--limit=200',
-        `--json=${DETAIL_FIELDS}`,
-      ]);
-
-      if (!detailJson) return;
-
-      const details = JSON.parse(detailJson) as GhPrDetail[];
+      const details = await fetchRepoDetailResults(nameWithOwner);
       for (const raw of details) {
         const pr = buildPrFromDetail(raw, nameWithOwner);
         prMap.set(pr.key, pr); // overwrite search stub with full detail
@@ -711,6 +1083,213 @@ export async function fetchMyOpenPrs(
 
   await attachWorktreesToPrs(prMap, repoContexts);
   return [...prMap.values()];
+}
+
+function buildAuthoredOpenSearchQuery(repo?: string): string {
+  const qualifiers = ['is:pr', 'is:open', 'author:@me'];
+  if (repo) {
+    qualifiers.push(`repo:${repo}`);
+  }
+  return qualifiers.join(' ');
+}
+
+async function fetchSearchDiscoveryResults(
+  repos?: string[]
+): Promise<{ results: GhSearchPr[]; hitSearchCeiling: boolean }> {
+  const scopes = repos && repos.length > 0 ? repos : [undefined];
+  const results: GhSearchPr[] = [];
+  let hitSearchCeiling = false;
+
+  await runWithConcurrency(scopes, DETAIL_FETCH_CONCURRENCY, async repo => {
+    const parsed = await runGhGraphqlSearch<GhGraphqlSearchPr>(
+      GRAPHQL_SEARCH_DISCOVERY_QUERY,
+      buildAuthoredOpenSearchQuery(repo)
+    );
+    if (parsed.length >= GH_GRAPHQL_SEARCH_CEILING) {
+      hitSearchCeiling = true;
+      const scope = repo ?? 'all repositories';
+      warnSearchCeiling(scope);
+    }
+    results.push(...parsed.map(flattenGraphqlSearchPr));
+  });
+
+  return { results, hitSearchCeiling };
+}
+
+const warnedSearchCeilings = new Set<string>();
+
+function warnSearchCeiling(scope: string): void {
+  if (warnedSearchCeilings.has(scope)) return;
+  warnedSearchCeilings.add(scope);
+  console.warn(
+    `[vigil] GitHub search hit its ${GH_GRAPHQL_SEARCH_CEILING}-PR ceiling for ${scope}; results beyond that may be omitted.`
+  );
+}
+
+async function fetchRepoDetailResults(repo: string): Promise<GhPrDetail[]> {
+  const nodes = await runGhGraphqlSearch<GhGraphqlDetailPr>(
+    GRAPHQL_DETAIL_DISCOVERY_QUERY,
+    buildAuthoredOpenSearchQuery(repo)
+  );
+  if (nodes.length >= GH_GRAPHQL_SEARCH_CEILING) {
+    warnSearchCeiling(repo);
+  }
+  return nodes.map(flattenGraphqlDetailPr);
+}
+
+let viewerLoginCache: string | null = null;
+
+async function fetchViewerLogin(): Promise<string> {
+  if (viewerLoginCache) return viewerLoginCache;
+  const login = await runGhWithRetry(['api', 'user', '--jq', '.login']);
+  viewerLoginCache = login.trim();
+  return viewerLoginCache;
+}
+
+async function fetchRepositoryFallbackOpenPrs(
+  repos: string[] | undefined,
+  repoContexts?: Map<string, RepoRuntimeContext>
+): Promise<PullRequest[]> {
+  const viewerLogin = (await fetchViewerLogin()).toLowerCase();
+  const targetRepos = repos && repos.length > 0 ? repos : await fetchViewerRepositoryNames();
+  const prMap = new Map<string, PullRequest>();
+
+  await runWithConcurrency(targetRepos, DETAIL_FETCH_CONCURRENCY, async repo => {
+    const details = await fetchRepoOpenPrDetailsViaRepository(repo, viewerLogin);
+    for (const raw of details) {
+      const pr = buildPrFromDetail(raw, repo);
+      prMap.set(pr.key, pr);
+    }
+  });
+
+  await attachWorktreesToPrs(prMap, repoContexts);
+  return [...prMap.values()];
+}
+
+async function fetchRepoOpenPrDetailsViaRepository(
+  repo: string,
+  viewerLogin: string
+): Promise<GhPrDetail[]> {
+  const nodes = await runGhGraphqlRepositoryPullRequests<GhGraphqlDetailPr>(
+    repo,
+    GRAPHQL_REPOSITORY_DETAIL_QUERY
+  );
+
+  return nodes
+    .filter(node => node.author?.login?.toLowerCase() === viewerLogin)
+    .map(flattenGraphqlDetailPr);
+}
+
+async function fetchViewerRepositoryNames(): Promise<string[]> {
+  const pages = await runGhGraphqlPages<GhGraphqlViewerRepositoriesPage>(
+    GRAPHQL_VIEWER_REPOSITORIES_QUERY
+  );
+  const names = pages.flatMap(page =>
+    flattenConnectionNodes(page.data?.viewer?.repositories?.nodes).map(repo => repo.nameWithOwner)
+  );
+  return [...new Set(names)];
+}
+
+async function runGhGraphqlSearch<TNode>(query: string, searchQuery: string): Promise<TNode[]> {
+  const pages = await runGhGraphqlPages<GhGraphqlSearchPage<TNode>>(query, {
+    searchQuery,
+  });
+  return pages.flatMap(page => flattenConnectionNodes(page.data?.search?.nodes));
+}
+
+async function runGhGraphqlPages<TPage>(
+  query: string,
+  variables: Record<string, string | undefined> = {}
+): Promise<TPage[]> {
+  const args = ['api', 'graphql', '--paginate', '--slurp', '-f', `query=${query}`];
+
+  for (const [key, value] of Object.entries(variables)) {
+    if (value === undefined) continue;
+    args.push('-f', `${key}=${value}`);
+  }
+
+  const json = await runGhWithRetry(args);
+  return JSON.parse(json) as TPage[];
+}
+
+async function runGhGraphqlRepositoryPullRequests<TNode>(
+  repo: string,
+  query: string
+): Promise<TNode[]> {
+  const { owner, name } = splitRepoNameWithOwner(repo);
+  const results: TNode[] = [];
+  let endCursor: string | undefined;
+
+  for (;;) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `owner=${owner}`,
+      '-F',
+      `repo=${name}`,
+    ];
+    if (endCursor) {
+      args.push('-F', `endCursor=${endCursor}`);
+    }
+
+    const json = await runGhWithRetry(args);
+    const page = JSON.parse(json) as GhGraphqlRepositoryPage<TNode>;
+    const connection = page.data?.repository?.pullRequests;
+    results.push(...flattenConnectionNodes(connection?.nodes));
+
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+    endCursor = nextCursor;
+  }
+
+  return results;
+}
+
+function splitRepoNameWithOwner(repo: string): { owner: string; name: string } {
+  const [owner, name] = repo.split('/');
+  if (!owner || !name) {
+    throw new Error(`Invalid repo name: ${repo}`);
+  }
+  return { owner, name };
+}
+
+function flattenConnectionNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
+  if (!nodes) return [];
+  return nodes.filter((node): node is T => node !== null);
+}
+
+function flattenGraphqlSearchPr(raw: GhGraphqlSearchPr): GhSearchPr {
+  return {
+    ...raw,
+    labels: flattenConnectionNodes(raw.labels?.nodes),
+  };
+}
+
+function flattenGraphqlDetailPr(raw: GhGraphqlDetailPr): GhPrDetail {
+  return {
+    ...raw,
+    labels: flattenConnectionNodes(raw.labels?.nodes),
+    reviews: flattenConnectionNodes(raw.reviews?.nodes),
+    comments: flattenConnectionNodes(raw.comments?.nodes),
+    statusCheckRollup: flattenConnectionNodes(raw.statusCheckRollup?.contexts?.nodes),
+    reviewRequests: flattenConnectionNodes(raw.reviewRequests?.nodes)
+      .map(node => node.requestedReviewer)
+      .filter(
+        (
+          reviewer
+        ): reviewer is {
+          login?: string;
+          name?: string;
+          slug?: string;
+        } => reviewer !== null && reviewer !== undefined
+      ),
+    assignees: flattenConnectionNodes(raw.assignees?.nodes),
+  };
 }
 
 /**
@@ -935,6 +1514,7 @@ export const _internal = {
   buildPrFromSearch,
   carryForwardKnown,
   findDetailRepos,
+  buildAuthoredOpenSearchQuery,
   mergeKnownIntoCurrent,
   isTransientGhFailure,
   formatGhArgsForError,

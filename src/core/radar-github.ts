@@ -68,6 +68,14 @@ interface GhPrFile {
   path?: string;
 }
 
+interface GhConnection<T> {
+  nodes?: Array<T | null> | null;
+  pageInfo?: {
+    hasNextPage: boolean;
+    endCursor?: string | null;
+  } | null;
+}
+
 interface GhRadarPr {
   number: number;
   title: string;
@@ -95,39 +103,203 @@ interface GhRadarPr {
   files: GhPrFile[];
 }
 
-const OPEN_LIST_LIMIT = 60;
+interface GhGraphqlRadarPr {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  body?: string;
+  createdAt: string;
+  updatedAt: string;
+  mergedAt?: string | null;
+  headRefName?: string;
+  baseRefName?: string;
+  mergeable?: string;
+  mergeStateStatus?: string;
+  reviewDecision?: string;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  labels?: GhConnection<GhLabel> | null;
+  reviews?: GhConnection<GhReview> | null;
+  comments?: GhConnection<GhCommentNode> | null;
+  statusCheckRollup?: {
+    contexts?: GhConnection<GhCheckRollupItem> | null;
+  } | null;
+  reviewRequests?: GhConnection<{
+    requestedReviewer?: {
+      login?: string;
+      name?: string;
+      slug?: string;
+    } | null;
+  }> | null;
+  author?: GhAuthor;
+  files?: GhConnection<GhPrFile> | null;
+}
+
+interface GhGraphqlRepoPage {
+  data?: {
+    repository?: {
+      pullRequests?: GhConnection<GhGraphqlRadarPr> | null;
+    } | null;
+  } | null;
+}
+
 const RADAR_RETRY_ATTEMPTS = 2;
 const RADAR_GH_TIMEOUT_MS = 12_000;
 
-// Keep startup fast by requesting only fields needed for dashboard relevance
-// classification. Detailed PR fields are fetched lazily on demand in detail view.
-const OPEN_FIELDS = [
-  'number',
-  'title',
-  'state',
-  'isDraft',
-  'url',
-  'createdAt',
-  'updatedAt',
-  'author',
-  'labels',
-  'reviewRequests',
-  'files',
-].join(',');
+const RADAR_PR_NODE_FIELDS = `
+  number
+  title
+  state
+  isDraft
+  url
+  body
+  createdAt
+  updatedAt
+  mergedAt
+  headRefName
+  baseRefName
+  mergeable
+  mergeStateStatus
+  reviewDecision
+  additions
+  deletions
+  changedFiles
+  labels(first: 100) {
+    nodes {
+      id
+      name
+      color
+    }
+  }
+  reviews(first: 100) {
+    nodes {
+      id
+      author {
+        login
+        type: __typename
+        ... on User {
+          name
+        }
+        ... on Organization {
+          name
+        }
+        ... on EnterpriseUserAccount {
+          name
+        }
+      }
+      state
+      body
+      submittedAt
+    }
+  }
+  comments(first: 100) {
+    nodes {
+      id
+      author {
+        login
+        type: __typename
+        ... on User {
+          name
+        }
+        ... on Organization {
+          name
+        }
+        ... on EnterpriseUserAccount {
+          name
+        }
+      }
+      body
+      createdAt
+      url
+    }
+  }
+  statusCheckRollup {
+    contexts(first: 100) {
+      nodes {
+        __typename
+        ... on CheckRun {
+          name
+          status
+          conclusion
+          workflowName
+          detailsUrl
+        }
+        ... on StatusContext {
+          context
+          state
+          targetUrl
+        }
+      }
+    }
+  }
+  reviewRequests(first: 100) {
+    nodes {
+      requestedReviewer {
+        ... on User {
+          login
+          name
+        }
+        ... on Team {
+          slug
+          name
+        }
+      }
+    }
+  }
+  author {
+    login
+    type: __typename
+    ... on User {
+      name
+    }
+    ... on Organization {
+      name
+    }
+    ... on EnterpriseUserAccount {
+      name
+    }
+  }
+  files(first: 100) {
+    nodes {
+      path
+    }
+  }
+`;
 
-const MERGED_FIELDS = [
-  'number',
-  'title',
-  'state',
-  'isDraft',
-  'url',
-  'createdAt',
-  'updatedAt',
-  'mergedAt',
-  'author',
-  'labels',
-  'files',
-].join(',');
+const RADAR_OPEN_QUERY = `
+  query($owner: String!, $repo: String!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, after: $endCursor, states: [OPEN], orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          ${RADAR_PR_NODE_FIELDS}
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
+
+const RADAR_MERGED_QUERY = `
+  query($owner: String!, $repo: String!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, after: $endCursor, states: [MERGED], orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          ${RADAR_PR_NODE_FIELDS}
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
 
 let viewerLoginCache: string | null = null;
 
@@ -348,7 +520,10 @@ function shouldExcludePr(
     return true;
   }
 
-  if (isPastAgeLimit(pr.updatedAt, radarConfig.staleCutoffDays * 24 * 60 * 60 * 1000)) {
+  if (
+    !repoConfig.watchAll &&
+    isPastAgeLimit(pr.updatedAt, radarConfig.staleCutoffDays * 24 * 60 * 60 * 1000)
+  ) {
     return true;
   }
 
@@ -382,37 +557,18 @@ function mergeReasons(
 }
 
 async function fetchRepoOpenPrs(repo: string): Promise<GhRadarPr[]> {
-  const json = await runGhWithRetry(
-    [
-      'pr',
-      'list',
-      `--repo=${repo}`,
-      '--state=open',
-      `--limit=${OPEN_LIST_LIMIT}`,
-      `--json=${OPEN_FIELDS}`,
-    ],
-    RADAR_RETRY_ATTEMPTS,
-    RADAR_GH_TIMEOUT_MS
-  );
-  if (!json) return [];
-  return JSON.parse(json) as GhRadarPr[];
+  const nodes = await runRepoPullRequestQuery(repo, RADAR_OPEN_QUERY);
+  return nodes.map(flattenGraphqlRadarPr);
 }
 
-async function fetchRepoMergedPrs(repo: string, limit: number): Promise<GhRadarPr[]> {
-  const json = await runGhWithRetry(
-    [
-      'pr',
-      'list',
-      `--repo=${repo}`,
-      '--state=merged',
-      `--limit=${Math.max(limit, 1)}`,
-      `--json=${MERGED_FIELDS}`,
-    ],
-    RADAR_RETRY_ATTEMPTS,
-    RADAR_GH_TIMEOUT_MS
+async function fetchRepoMergedPrs(repo: string, maxAgeMs: number): Promise<GhRadarPr[]> {
+  const nodes = await runRepoPullRequestQuery(
+    repo,
+    RADAR_MERGED_QUERY,
+    pageNodes =>
+      pageNodes.length > 0 && pageNodes.every(node => isPastAgeLimit(node.updatedAt, maxAgeMs))
   );
-  if (!json) return [];
-  return JSON.parse(json) as GhRadarPr[];
+  return nodes.map(flattenGraphqlRadarPr);
 }
 
 export async function getViewerLogin(): Promise<string> {
@@ -453,6 +609,87 @@ function defaultMergedRelevance(): RelevanceReason[] {
   ];
 }
 
+function buildMergedSearchQuery(repo: string, mergedAfter: string): string {
+  return `repo:${repo} is:pr is:merged merged:>=${mergedAfter}`;
+}
+
+function splitRepo(repo: string): { owner: string; name: string } {
+  const [owner, name] = repo.split('/');
+  if (!owner || !name) {
+    throw new Error(`Invalid repo name: ${repo}`);
+  }
+  return { owner, name };
+}
+
+function flattenConnectionNodes<T>(nodes: Array<T | null> | null | undefined): T[] {
+  if (!nodes) return [];
+  return nodes.filter((node): node is T => node !== null);
+}
+
+function flattenGraphqlRadarPr(raw: GhGraphqlRadarPr): GhRadarPr {
+  return {
+    ...raw,
+    labels: flattenConnectionNodes(raw.labels?.nodes),
+    reviews: flattenConnectionNodes(raw.reviews?.nodes),
+    comments: flattenConnectionNodes(raw.comments?.nodes),
+    statusCheckRollup: flattenConnectionNodes(raw.statusCheckRollup?.contexts?.nodes),
+    reviewRequests: flattenConnectionNodes(raw.reviewRequests?.nodes)
+      .map(node => node.requestedReviewer)
+      .filter(
+        (
+          reviewer
+        ): reviewer is {
+          login?: string;
+          name?: string;
+          slug?: string;
+        } => reviewer !== null && reviewer !== undefined
+      ),
+    files: flattenConnectionNodes(raw.files?.nodes),
+  };
+}
+
+async function runRepoPullRequestQuery(
+  repo: string,
+  query: string,
+  stopAfterPage?: ((pageNodes: GhGraphqlRadarPr[]) => boolean) | undefined
+): Promise<GhGraphqlRadarPr[]> {
+  const { owner, name } = splitRepo(repo);
+  const results: GhGraphqlRadarPr[] = [];
+  let endCursor: string | undefined;
+
+  for (;;) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `owner=${owner}`,
+      '-F',
+      `repo=${name}`,
+    ];
+    if (endCursor) {
+      args.push('-F', `endCursor=${endCursor}`);
+    }
+
+    const json = await runGhWithRetry(args, RADAR_RETRY_ATTEMPTS, RADAR_GH_TIMEOUT_MS);
+    const page = JSON.parse(json) as GhGraphqlRepoPage;
+    const connection = page.data?.repository?.pullRequests;
+    const pageNodes = flattenConnectionNodes(connection?.nodes);
+    results.push(...pageNodes);
+    if (stopAfterPage?.(pageNodes)) {
+      break;
+    }
+
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+    endCursor = nextCursor;
+  }
+
+  return results;
+}
 async function collectOpenRepoRadar(
   config: RadarConfig,
   repoConfig: RadarRepoConfig,
@@ -484,12 +721,12 @@ async function collectMergedRepoRadar(
 ): Promise<void> {
   if (config.merged.limit <= 0) return;
 
-  const mergedFetchLimit = Math.max(config.merged.limit * 3, 25);
-  const rawMergedPrs = await fetchRepoMergedPrs(repoConfig.repo, mergedFetchLimit);
+  const maxAgeMs = config.merged.maxAgeHours * 60 * 60 * 1000;
+  const rawMergedPrs = await fetchRepoMergedPrs(repoConfig.repo, maxAgeMs);
 
   for (const raw of rawMergedPrs) {
     const pr = buildPullRequest(raw, repoConfig.repo);
-    if (isPastAgeLimit(pr.mergedAt ?? pr.updatedAt, config.merged.maxAgeHours * 60 * 60 * 1000)) {
+    if (isPastAgeLimit(pr.mergedAt ?? pr.updatedAt, maxAgeMs)) {
       continue;
     }
 
@@ -544,3 +781,9 @@ export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResu
     mergedPrs: limitMergedPrs(mergedPrs, config.merged.limit),
   };
 }
+
+export const _internal = {
+  buildMergedSearchQuery,
+  limitMergedPrs,
+  shouldExcludePr,
+};

@@ -127,5 +127,13 @@ export function classifyRelevance(
     });
   }
 
+  if (reasons.length === 0 && repoConfig.watchAll) {
+    reasons.push({
+      tier: 'watch',
+      reason: `Watching all PRs in ${pr.repository.nameWithOwner}`,
+      matchedBy: 'watch-all',
+    });
+  }
+
   return dedupeReasons(reasons);
 }

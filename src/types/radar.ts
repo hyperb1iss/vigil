@@ -37,6 +37,7 @@ export interface MergedTracking {
 export interface RadarRepoConfig {
   repo: string;
   domainRules: DomainRule[];
+  watchAll?: boolean | undefined;
   relevantLabels?: string[] | undefined;
   watchAuthors?: string[] | undefined;
   excludeAuthors?: string[] | undefined;

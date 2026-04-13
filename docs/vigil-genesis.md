@@ -157,22 +157,22 @@ The primary view. Shows all your open PRs sorted by state priority (hot first, d
 ```
 ╭─ vigil ──────────────────────────────── 3 hot · 2 waiting · 5 dormant ─╮
 │                                                                          │
-│  🔴 #3058  fix(supabase): eval scheduler auto-keys     stef/auto-keys  │
+│  🔴 #3058  feat(keys): add shortcut sync          feature/auto-keys     │
 │     CI ✅  │  Reviews: 1 blocking  │  Last activity: 2m ago            │
 │     → Claude flagged search_path. Auto-fixable.           [enter: view] │
 │                                                                          │
-│  🔴 #3044  chore: pattern JSON view                     stef/patterns  │
+│  🔴 #3044  chore(ui): normalize pattern list      feature/patterns      │
 │     CI ❌ typecheck failing  │  Conflicts with main                     │
 │     → Needs rebase + type fix                             [enter: view] │
 │                                                                          │
-│  🟡 #3055  fix: persist CF artifact changes              stef/cf-meta  │
+│  🟡 #3055  fix: persist cache artifact changes     feature/cf-meta      │
 │     CI 🔄 running  │  Awaiting review from @jordan                     │
 │                                                                          │
-│  🟢 #2898  feat: per-entity workflow config               stef/aem-wf  │
+│  🟢 #2898  feat: per-entity workflow config       feature/workflow      │
 │     CI ✅  │  Approved  │  Ready to merge                               │
 │     → [m] merge  [s] squash                                              │
 │                                                                          │
-│  ⚫ #2679  fix: NoOutputGeneratedError fallback          stef/fallback │
+│  ⚫ #2679  fix: fallback for empty output         feature/fallback       │
 │     No activity 5d  │  1 stale review                                   │
 │                                                                          │
 ╰─ [r] refresh  [a] auto-fix all  [y] yolo mode  [q] quit ────────────────╯
@@ -185,11 +185,11 @@ Each PR row is a reactive component that updates as events arrive. State colors 
 Drill into a specific PR to see the full context and agent-proposed actions.
 
 ```
-╭─ #3058 fix(supabase): eval scheduler auto-keys ─────────────────────────╮
+╭─ #3058 feat(keys): add shortcut sync ───────────────────────────────────╮
 │                                                                           │
-│  Branch: stef/auto-keys → main                                           │
+│  Branch: feature/auto-keys → main                                        │
 │  State: 🔴 Hot  │  CI: ✅ passing  │  Mergeable: yes                    │
-│  Linear: ENG-1018 v2 Developer Experience                                │
+│  Linear: ENG-1018 Dashboard polish                                       │
 │                                                                           │
 ├─ Reviews ─────────────────────────────────────────────────────────────────┤
 │                                                                           │
@@ -249,124 +249,125 @@ Clicking a notification focuses the TUI on that PR.
 
 ## Configuration
 
-### Global Config (`~/.vigil/config.ts`)
+### Global Config (`$XDG_CONFIG_HOME/vigil/config.json`)
 
-```typescript
-export default {
-  // Polling
-  pollIntervalMs: 30_000,
-
-  // Mode
-  defaultMode: "hitl",        // "hitl" | "yolo"
-
-  // Notifications
-  notifications: {
-    enabled: true,
-    onCiFailure: true,
-    onBlockingReview: true,
-    onReadyToMerge: true,
-    onNewComment: false,       // too noisy by default
+```json
+{
+  "pollIntervalMs": 30000,
+  "defaultMode": "hitl",
+  "notifications": {
+    "enabled": true,
+    "onCiFailure": true,
+    "onBlockingReview": true,
+    "onReadyToMerge": true,
+    "onNewComment": false
   },
-
-  // Agent behavior
-  agent: {
-    model: "claude-sonnet-4-6",   // fast + capable
-    maxAutoFixesPerPr: 5,          // safety limit
-    autoRespondToScopeCreep: true, // in YOLO mode
+  "agent": {
+    "model": "claude-sonnet-4-6",
+    "maxAutoFixesPerPr": 5,
+    "autoRespondToScopeCreep": true
   },
-
-  // Learning
-  learning: {
-    enabled: true,
-    backend: "sibyl",              // "sibyl" | "sqlite" | "json"
-    captureAfterMerge: true,       // auto-capture patterns when PR merges
+  "learning": {
+    "enabled": true,
+    "backend": "markdown",
+    "captureAfterMerge": true
   },
-
-  // Display
-  display: {
-    dormantThresholdHours: 48,
-    maxPrsOnDashboard: 20,
-    colorScheme: "silkcircuit",    // built-in: silkcircuit, github, monochrome
+  "display": {
+    "dormantThresholdHours": 48,
+    "maxPrsOnDashboard": 20,
+    "colorScheme": "silkcircuit",
+    "dashboardFeedMode": "mine"
   },
-};
+  "radar": {
+    "enabled": true,
+    "repos": [
+      {
+        "repo": "owner/repo",
+        "domainRules": [],
+        "watchAll": true
+      }
+    ],
+    "teams": [],
+    "pollIntervalMs": 60000,
+    "merged": {
+      "limit": 10,
+      "maxAgeHours": 48,
+      "domainOnly": true
+    },
+    "notifications": {
+      "onDirectReviewRequest": true,
+      "onNewDomainPr": true,
+      "onMergedDomainPr": false
+    },
+    "excludeBotDrafts": true,
+    "excludeOwnPrs": true,
+    "staleCutoffDays": 30
+  }
+}
 ```
 
-### Repo Config (`.vigilrc.ts` in repo root)
+### Repo Config (`.vigilrc.json` in repo root)
 
 This is where team-specific behavior lives. The generic core never hardcodes repo-specific logic.
 
-```typescript
-import type { RepoConfig } from "vigil";
-
-export default {
-  // GitHub
-  owner: "acme",
-  repo: "webapp",
-  baseBranch: "main",
-
-  // PR conventions
-  titleFormat: "<type>(<scope>): [ENG|FDE-XXXX] <description>",
-
-  // Bot awareness — teach Vigil about your CI/review bots
-  bots: {
+```json
+{
+  "owner": "acme",
+  "repo": "webapp",
+  "baseBranch": "main",
+  "titleFormat": "<type>(<scope>): [ENG|FDE-XXXX] <description>",
+  "bots": {
     "claude-code-review[bot]": {
-      role: "code-reviewer",
-      trustLevel: "advisory",     // "advisory" | "authoritative"
-      parseBlocking: true,        // parse 🚫 Blocking sections
-      parseSuggestions: true,
+      "role": "code-reviewer",
+      "trustLevel": "advisory",
+      "parseBlocking": true,
+      "parseSuggestions": true
     },
     "acme-truthsayer[bot]": {
-      role: "pr-template",
-      templates: {
-        verification: "## Verification Evidence",
-        regression: "## Regression Test Evidence",
-      },
+      "role": "pr-template",
+      "templates": {
+        "verification": "## Verification Evidence",
+        "regression": "## Regression Test Evidence"
+      }
     },
     "linear[bot]": {
-      role: "issue-tracker",
-      linkPattern: /ENG-\d+|FDE-\d+/,
-    },
+      "role": "issue-tracker"
+    }
   },
-
-  // Monorepo awareness
-  monorepo: {
-    tool: "turbo",
-    packageDirs: ["apps/*", "packages/*"],
-    buildCommand: "turbo build",
-    typecheckCommand: "turbo typecheck",
-    lintCommand: "turbo lint:fix",
+  "monorepo": {
+    "tool": "turbo",
+    "packageDirs": ["apps/*", "packages/*"],
+    "buildCommand": "turbo build",
+    "typecheckCommand": "turbo typecheck",
+    "lintCommand": "turbo lint:fix"
   },
-
-  // Review culture — learned patterns can also be seeded here
-  reviewPatterns: [
+  "reviewPatterns": [
     {
-      trigger: "SECURITY DEFINER without SET search_path",
-      action: "auto-fix",
-      fix: "Add SET search_path = public after SECURITY DEFINER",
-      confidence: 1.0,
+      "trigger": "SECURITY DEFINER without SET search_path",
+      "action": "auto-fix",
+      "fix": "Add SET search_path = public after SECURITY DEFINER",
+      "confidence": 1.0
     },
     {
-      trigger: "PR description test count mismatch",
-      action: "auto-fix",
-      fix: "Count tests in file and update PR body",
-      confidence: 0.9,
+      "trigger": "PR description test count mismatch",
+      "action": "auto-fix",
+      "fix": "Count tests in file and update PR body",
+      "confidence": 0.9
     },
     {
-      trigger: "scope creep suggestion on single-use trigger",
-      action: "respond",
-      template: "This is a {description} scenario. The trigger handles the production case. Adding {suggestion} is overengineering for a {context} model.",
-      confidence: 0.7,
-    },
+      "trigger": "scope creep suggestion on single-use trigger",
+      "action": "respond",
+      "template": "This is a {description} scenario. The trigger handles the production case. Adding {suggestion} is overengineering for a {context} model.",
+      "confidence": 0.7
+    }
   ],
-
-  // Actions that always require human approval, even in YOLO mode
-  alwaysConfirm: [
+  "alwaysConfirm": [
     "git push --force",
     "merge",
     "close",
-    "delete branch",
-  ],
-} satisfies RepoConfig;
+    "delete branch"
+  ]
+}
 ```
 
 ---
@@ -608,7 +609,7 @@ Clicking a macOS notification deep-links to the PR detail view in the TUI.
 - Bun's startup time matters — Vigil should feel instant when you launch it
 - Ink's React model makes the TUI trivially composable and reactive
 - Both are TypeScript-native with zero build step
-- Bliss already has `q` built on Bun + Ink, so the patterns are proven
+- The Bun + Ink ecosystem already proves these patterns out in production-quality CLIs
 
 ### Why Claude Agent SDK
 
@@ -662,10 +663,10 @@ Vigil is built for developers who use git worktrees — multiple branches checke
 On startup, Vigil scans for worktrees associated with the repo:
 
 ```
-~/dev/v2/                          ← main worktree (main branch)
-~/dev/worktrees/v2/stef/auto-keys  ← feature worktree (stef/auto-keys)
-~/dev/worktrees/v2/stef/patterns   ← feature worktree (stef/patterns)
-~/dev/worktrees/v2/stef/cf-meta    ← feature worktree (stef/cf-meta)
+~/src/webapp/                            ← main worktree (main branch)
+~/worktrees/webapp/feature/auto-keys    ← feature worktree (feature/auto-keys)
+~/worktrees/webapp/feature/patterns     ← feature worktree (feature/patterns)
+~/worktrees/webapp/feature/cf-meta      ← feature worktree (feature/cf-meta)
 ```
 
 Each PR in the dashboard shows its local worktree path (if one exists). When the fix agent needs to apply changes, it operates in the correct worktree directory — not the main checkout.
@@ -685,15 +686,15 @@ Each PR in the dashboard shows its local worktree path (if one exists). When the
 The dashboard shows worktree status alongside PR status:
 
 ```
-  🔴 #3058  fix(supabase): eval scheduler auto-keys     stef/auto-keys
+  🔴 #3058  feat(keys): add shortcut sync               feature/auto-keys
      CI ✅  │  Reviews: 1 blocking  │  Last activity: 2m ago
-     📂 ~/dev/worktrees/v2/stef/auto-keys  │  clean
+     📂 ~/worktrees/webapp/feature/auto-keys  │  clean
 ```
 
 ```
-  🔴 #3044  chore: pattern JSON view                     stef/patterns
+  🔴 #3044  chore(ui): normalize pattern list            feature/patterns
      CI ❌ typecheck  │  Conflicts with main
-     📂 ~/dev/worktrees/v2/stef/patterns  │  2 uncommitted changes
+     📂 ~/worktrees/webapp/feature/patterns  │  2 uncommitted changes
 ```
 
 PRs without a local worktree show a "no local checkout" indicator with an option to create one.
@@ -710,7 +711,7 @@ Vigil can monitor multiple repos simultaneously. Each repo has its own worktree 
 │  🔴 #3058  fix(supabase): eval scheduler ...                            │
 │  🔴 #3044  chore: pattern JSON view ...                                 │
 │                                                                          │
-│  hyperb1iss/sibyl                                    1 waiting          │
+│  personal/notesync                                   1 waiting          │
 │  ──────────────────────────────────────────────────────────────────────  │
 │  🟡 #42   feat: MCP resource subscriptions ...                          │
 │                                                                          │
@@ -719,32 +720,26 @@ Vigil can monitor multiple repos simultaneously. Each repo has its own worktree 
 
 ### Configuration
 
-Worktree discovery is configured per-repo in `.vigilrc.ts`:
+Worktree discovery is configured per-repo in `.vigilrc.json`:
 
-```typescript
-export default {
-  // ...
-  worktrees: {
-    // Auto-discover from git
-    autoDiscover: true,
-
-    // Additional search paths (if worktrees live outside the repo root)
-    searchPaths: [
-      "~/dev/worktrees/v2",
-      "~/.sibyl-worktrees",
+```json
+{
+  "worktrees": {
+    "autoDiscover": true,
+    "searchPaths": [
+      "~/worktrees/webapp",
+      "~/.vigil-worktrees"
     ],
-
-    // Naming convention for display
-    displayFormat: "branch",  // "branch" | "path" | "both"
-  },
-} satisfies RepoConfig;
+    "displayFormat": "branch"
+  }
+}
 ```
 
 ---
 
 ## Design Principles
 
-**Generic core, specific config.** The PR state machine, agent orchestration, and TUI are universal. Team-specific behavior (bot parsing, CI conventions, review culture) lives in `.vigilrc.ts`. You should be able to use Vigil on any GitHub repo by writing a config file.
+**Generic core, specific config.** The PR state machine, agent orchestration, and TUI are universal. Team-specific behavior (bot parsing, CI conventions, review culture) lives in `.vigilrc.json`. You should be able to use Vigil on any GitHub repo by writing a config file.
 
 **Learn, don't hardcode.** Instead of building rules for every possible review pattern, Vigil observes what works and promotes it. The config file seeds initial patterns, but the system gets smarter on its own.
 

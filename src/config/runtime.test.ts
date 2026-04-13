@@ -50,22 +50,22 @@ describe('loadRuntimeRepoContexts', () => {
     writeFileSync(
       join(repoDir, '.vigilrc.json'),
       JSON.stringify({
-        owner: 'hyperb1iss',
-        repo: 'vigil',
+        owner: 'acme',
+        repo: 'webapp',
         baseBranch: 'main',
         worktrees: {
           autoDiscover: true,
-          searchPaths: ['~/dev/worktrees/vigil'],
+          searchPaths: ['~/worktrees/webapp'],
           displayFormat: 'both',
         },
       })
     );
 
     const contexts = await loadRuntimeRepoContexts(repoDir);
-    const context = contexts.get('hyperb1iss/vigil');
+    const context = contexts.get('acme/webapp');
 
     expect(context?.repoDir).toBe(realpathSync(repoDir));
     expect(context?.config.baseBranch).toBe('main');
-    expect(context?.config.worktrees?.searchPaths).toEqual(['~/dev/worktrees/vigil']);
+    expect(context?.config.worktrees?.searchPaths).toEqual(['~/worktrees/webapp']);
   });
 });

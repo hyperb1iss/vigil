@@ -47,15 +47,15 @@ const teams: TeamWatch[] = [{ slug: 'owner/platform-maintainers', name: 'Platfor
 
 describe('radar classifier', () => {
   test('matches direct user review request', () => {
-    const pr = makePr({ reviewRequests: [{ login: 'bliss' }] });
-    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'bliss');
+    const pr = makePr({ reviewRequests: [{ login: 'reviewer' }] });
+    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'reviewer');
     expect(reasons.some(r => r.tier === 'direct')).toBe(true);
     expect(topTier(reasons)).toBe('direct');
   });
 
   test('matches team review request by slug tail', () => {
     const pr = makePr({ reviewRequests: [{ slug: 'platform-maintainers' }] });
-    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'bliss');
+    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'reviewer');
     expect(reasons.some(r => r.matchedBy === 'owner/platform-maintainers')).toBe(true);
     expect(topTier(reasons)).toBe('direct');
   });
@@ -67,7 +67,7 @@ describe('radar classifier', () => {
       ['infra/cron.yaml', '.github/workflows/ci.yml', 'agents/a.ts'],
       repoConfig,
       teams,
-      'bliss'
+      'reviewer'
     );
     expect(reasons.some(r => r.matchedBy === 'infra' && r.tier === 'domain')).toBe(true);
     expect(reasons.some(r => r.matchedBy === 'agents')).toBe(false);
@@ -78,9 +78,21 @@ describe('radar classifier', () => {
       author: { login: 'staff-eng', isBot: false },
       labels: [{ id: '1', name: 'needs-platform-review', color: 'red' }],
     });
-    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'bliss');
+    const reasons = classifyRelevance(pr, [], repoConfig, teams, 'reviewer');
     expect(reasons.some(r => r.reason.includes('Label'))).toBe(true);
     expect(reasons.some(r => r.reason.includes('Watched author'))).toBe(true);
     expect(topTier(reasons)).toBe('watch');
+  });
+
+  test('can watch all PRs for slower personal repos even without explicit matches', () => {
+    const pr = makePr();
+    const reasons = classifyRelevance(pr, [], { ...repoConfig, watchAll: true }, teams, 'reviewer');
+    expect(reasons).toEqual([
+      {
+        tier: 'watch',
+        reason: 'Watching all PRs in owner/repo',
+        matchedBy: 'watch-all',
+      },
+    ]);
   });
 });

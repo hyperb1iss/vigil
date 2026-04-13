@@ -25,7 +25,7 @@ The PR lifecycle is death by a thousand interrupts. Push code, wait for CI, read
 
 **Vigil watches your pull requests so you don't have to.**
 
-It monitors every open PR across all your repos, classifies their state in real-time, and dispatches AI agents to handle the mechanical work — fixing review feedback, rebasing branches, responding to comments, filling in evidence templates. You stay in flow. Vigil keeps the watch.
+It monitors your authored PRs plus incoming review PRs where you are requested, tagged, or matched by repo radar rules, classifies them in real-time, and dispatches AI agents to handle the mechanical work — fixing review feedback, rebasing branches, responding to comments, filling in evidence templates. You stay in flow. Vigil keeps the watch.
 
 ## 🗡️ What You Get
 
@@ -187,7 +187,23 @@ Click a notification → opens the PR in your browser. First-poll alerts are sup
 | `$XDG_CACHE_HOME/vigil/` | Poll cache + snapshots |
 | `.vigilrc.json` | Per-repo overrides |
 
-`.vigilrc.ts` execution is disabled by default for safety. Enable it explicitly with `VIGIL_ALLOW_TS_CONFIG=1`.
+Per-repo overrides live in `.vigilrc.json`. TypeScript repo config execution is currently disabled, so stick to JSON for local overrides.
+
+If you want slower personal projects to surface every incoming PR, set `radar.repos[].watchAll: true` in your global `config.json`. Those PRs stay visible at watch tier even without an explicit review request.
+
+```json
+{
+  "radar": {
+    "repos": [
+      {
+        "repo": "owner/repo",
+        "domainRules": [],
+        "watchAll": true
+      }
+    ]
+  }
+}
+```
 
 ### 🧠 Learning
 
@@ -196,9 +212,9 @@ The Learning agent captures patterns from every merged PR — reviewer tendencie
 ## 🏗️ Architecture
 
 ```
-gh search prs --author=@me --state=open
-  → Poller (30s, updatedAt short-circuit)
-    → Differ (snapshot → granular events)
+GraphQL authored-PR discovery
+  → Repo-paged detail hydration + incoming radar paging
+    → Poller (30s, snapshot diffing)
       → State Machine (5 states)
         → Zustand Store → Ink TUI
         → Orchestrator → Agents (parallel)
@@ -223,7 +239,8 @@ bun run dev          # Watch mode
 bun run build        # Bundle to dist/
 bun run check        # Typecheck + lint + test
 bun run lint:fix     # Auto-fix
-bun test             # 166 tests, 95% coverage
+bun test             # Run the full test suite
+bun run test:coverage
 bun run typecheck    # Types only
 ```
 
