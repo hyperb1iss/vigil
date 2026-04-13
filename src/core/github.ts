@@ -542,6 +542,7 @@ function buildPrFromDetail(raw: GhPrDetail, nameWithOwner: string): PullRequest 
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     mergedAt: raw.mergedAt ?? undefined,
+    dataSource: 'detail',
   };
 }
 
@@ -577,6 +578,7 @@ function buildPrFromSearch(raw: GhSearchPr): PullRequest {
     changedFiles: 0,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    dataSource: 'search',
   };
 }
 
@@ -866,13 +868,51 @@ function carryForwardKnown(
   prMap: Map<string, PullRequest>
 ): void {
   const prefix = `${repo}#`;
-  for (const [key, pr] of knownPrs) {
+  for (const [key, known] of knownPrs) {
     // Only preserve data for PRs still present in the current open-search snapshot.
     // Otherwise merged/closed PRs can linger indefinitely as stale cache entries.
-    if (key.startsWith(prefix) && prMap.has(key)) {
-      prMap.set(key, pr);
+    const current = prMap.get(key);
+    if (key.startsWith(prefix) && current) {
+      prMap.set(key, mergeKnownIntoCurrent(current, known));
     }
   }
+}
+
+function mergeKnownIntoCurrent(current: PullRequest, known: PullRequest): PullRequest {
+  const currentUpdatedAt = Date.parse(current.updatedAt);
+  const knownUpdatedAt = Date.parse(known.updatedAt);
+  const currentIsNewer =
+    Number.isFinite(currentUpdatedAt) &&
+    Number.isFinite(knownUpdatedAt) &&
+    currentUpdatedAt > knownUpdatedAt;
+
+  if (!currentIsNewer) {
+    return known;
+  }
+
+  return {
+    ...current,
+    headRefName: known.headRefName || current.headRefName,
+    baseRefName: known.baseRefName || current.baseRefName,
+    mergeable: current.mergeable === 'UNKNOWN' ? known.mergeable : current.mergeable,
+    mergeStateStatus:
+      current.mergeStateStatus === 'UNKNOWN' || current.mergeStateStatus === undefined
+        ? known.mergeStateStatus
+        : current.mergeStateStatus,
+    reviewDecision: current.reviewDecision || known.reviewDecision,
+    reviews: current.reviews.length > 0 ? current.reviews : known.reviews,
+    comments: current.comments.length > 0 ? current.comments : known.comments,
+    checks: current.checks.length > 0 ? current.checks : known.checks,
+    reviewRequests:
+      current.reviewRequests && current.reviewRequests.length > 0
+        ? current.reviewRequests
+        : known.reviewRequests,
+    additions: current.additions > 0 ? current.additions : known.additions,
+    deletions: current.deletions > 0 ? current.deletions : known.deletions,
+    changedFiles: current.changedFiles > 0 ? current.changedFiles : known.changedFiles,
+    worktree: current.worktree ?? known.worktree,
+    dataSource: known.dataSource ?? current.dataSource,
+  };
 }
 
 // ─── Test Exports ────────────────────────────────────────────────────────────
@@ -895,6 +935,7 @@ export const _internal = {
   buildPrFromSearch,
   carryForwardKnown,
   findDetailRepos,
+  mergeKnownIntoCurrent,
   isTransientGhFailure,
   formatGhArgsForError,
 };

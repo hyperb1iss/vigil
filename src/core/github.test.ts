@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { PullRequest } from '../types/pr.js';
 import { _internal, GhAuthError, GhError, GhRateLimitError } from './github.js';
 
 const {
@@ -21,6 +22,7 @@ const {
   findDetailRepos,
   formatGhArgsForError,
   isTransientGhFailure,
+  mergeKnownIntoCurrent,
 } = _internal;
 
 // ─── normalizeAuthor ───────────────────────────────────────────────────
@@ -678,7 +680,33 @@ describe('carryForwardKnown', () => {
     carryForwardKnown('owner/repo', known, prMap);
 
     expect(prMap.has('owner/repo#1')).toBe(false);
-    expect(prMap.get('owner/repo#2')?.updatedAt).toBe('2026-02-20T00:00:00Z');
+    expect(prMap.get('owner/repo#2')?.updatedAt).toBe('2026-03-01T00:00:00Z');
+    expect(prMap.get('owner/repo#2')?.headRefName).toBe('feat/x');
+  });
+
+  test('does not overwrite fresher search metadata when detail fetch fails', () => {
+    const known = new Map<string, ReturnType<typeof makePr>>([
+      ['owner/repo#2', makePr('owner/repo#2', 'OPEN', '2026-02-20T00:00:00Z')],
+    ]);
+
+    const prMap = new Map<string, ReturnType<typeof makePr>>([
+      [
+        'owner/repo#2',
+        {
+          ...makePr('owner/repo#2', 'OPEN', '2026-03-01T00:00:00Z'),
+          title: 'Fresh title',
+          headRefName: '',
+          baseRefName: '',
+          dataSource: 'search',
+        },
+      ],
+    ]);
+
+    carryForwardKnown('owner/repo', known, prMap);
+
+    expect(prMap.get('owner/repo#2')?.title).toBe('Fresh title');
+    expect(prMap.get('owner/repo#2')?.headRefName).toBe('feat/x');
+    expect(prMap.get('owner/repo#2')?.updatedAt).toBe('2026-03-01T00:00:00Z');
   });
 });
 
@@ -779,5 +807,77 @@ describe('findDetailRepos', () => {
     expect(findDetailRepos(repos, searchResults, known, prMap, repoContexts)).toEqual(
       new Set(['owner/repo'])
     );
+  });
+});
+
+describe('mergeKnownIntoCurrent', () => {
+  function makePr(key: string, updatedAt: string, overrides: Partial<PullRequest> = {}) {
+    const [repo, numberStr] = key.split('#');
+    const repoName = repo.split('/')[1] ?? repo;
+    return {
+      key,
+      number: Number(numberStr),
+      title: `PR ${numberStr}`,
+      body: '',
+      url: `https://github.com/${repo}/pull/${numberStr}`,
+      repository: { name: repoName, nameWithOwner: repo },
+      author: { login: 'dev', isBot: false },
+      headRefName: '',
+      baseRefName: '',
+      isDraft: false,
+      state: 'OPEN' as const,
+      mergeable: 'UNKNOWN' as const,
+      mergeStateStatus: 'UNKNOWN' as const,
+      reviewDecision: '' as const,
+      reviews: [],
+      comments: [],
+      checks: [],
+      labels: [],
+      reviewRequests: [],
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      createdAt: updatedAt,
+      updatedAt,
+      dataSource: 'search' as const,
+      ...overrides,
+    };
+  }
+
+  test('preserves fresher search metadata while carrying forward known detail', () => {
+    const current = makePr('owner/repo#1', '2026-03-02T00:00:00Z', {
+      title: 'Fresh title',
+      labels: [{ id: 'bug', name: 'bug', color: 'ff0000' }],
+    });
+    const known = makePr('owner/repo#1', '2026-03-01T00:00:00Z', {
+      headRefName: 'feat/test',
+      baseRefName: 'main',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'APPROVED',
+      reviews: [
+        {
+          id: 'r1',
+          author: { login: 'reviewer', isBot: false },
+          state: 'APPROVED',
+          body: 'LGTM',
+          submittedAt: '2026-03-01T00:00:00Z',
+        },
+      ],
+      checks: [{ name: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+      dataSource: 'detail',
+    });
+
+    expect(mergeKnownIntoCurrent(current, known)).toMatchObject({
+      title: 'Fresh title',
+      updatedAt: '2026-03-02T00:00:00Z',
+      headRefName: 'feat/test',
+      baseRefName: 'main',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'APPROVED',
+      dataSource: 'detail',
+    });
   });
 });

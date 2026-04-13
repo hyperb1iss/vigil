@@ -194,6 +194,37 @@ describe('diffPrs → reviews', () => {
     const reviewEvents = events.filter(e => e.type === 'review_submitted');
     expect(reviewEvents).toHaveLength(2);
   });
+
+  test('detail hydration does not replay historical reviews on cold start', () => {
+    const timestamp = new Date().toISOString();
+    const prev = makePr({
+      headRefName: '',
+      baseRefName: '',
+      mergeable: 'UNKNOWN',
+      reviewDecision: '',
+      reviews: [],
+      checks: [],
+      dataSource: 'search',
+      updatedAt: timestamp,
+    });
+    const curr = makePr({
+      reviews: [
+        {
+          id: 'r1',
+          author: { login: 'alice', isBot: false },
+          state: 'APPROVED',
+          body: 'LGTM',
+          submittedAt: timestamp,
+        },
+      ],
+      checks: [{ name: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      reviewDecision: 'APPROVED',
+      dataSource: 'detail',
+      updatedAt: timestamp,
+    });
+
+    expect(diffPrs(toMap(prev), toMap(curr))).toEqual([]);
+  });
 });
 
 // ─── Comments ──────────────────────────────────────────────────────────
@@ -257,6 +288,18 @@ describe('diffPrs → checks', () => {
     const events = diffPrs(toMap(prev), toMap(curr));
 
     expect(events.some(e => e.type === 'checks_changed')).toBe(false);
+  });
+
+  test('status-only check changes still emit checks_changed', () => {
+    const prev = makePr({
+      checks: [{ name: 'build', status: 'QUEUED', conclusion: null }],
+    });
+    const curr = makePr({
+      checks: [{ name: 'build', status: 'IN_PROGRESS', conclusion: null }],
+    });
+    const events = diffPrs(toMap(prev), toMap(curr));
+
+    expect(events.some(e => e.type === 'checks_changed')).toBe(true);
   });
 
   test('new check added emits checks_changed', () => {

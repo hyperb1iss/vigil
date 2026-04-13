@@ -96,4 +96,5 @@ export interface PullRequest {
   updatedAt: string;
   mergedAt?: string | undefined;
   worktree?: PrWorktree | undefined;
+  dataSource?: 'search' | 'detail' | undefined;
 }

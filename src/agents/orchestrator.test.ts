@@ -115,7 +115,7 @@ describe('event dedupe', () => {
     _internal.resetEventDedupeState();
   });
 
-  test('dedupes duplicate coarse batch keys', () => {
+  test('dedupes only truly identical batch events', () => {
     const timestamp = '2026-02-27T18:58:47.613Z';
     const events = [
       makeCommentEvent('1', timestamp),
@@ -123,8 +123,23 @@ describe('event dedupe', () => {
       makeReviewEvent('r1', timestamp),
     ];
     const deduped = _internal.dedupeBatchEvents(events);
+    expect(deduped).toHaveLength(3);
+    expect(deduped.map(event => event.type)).toEqual([
+      'comment_added',
+      'comment_added',
+      'review_submitted',
+    ]);
+  });
+
+  test('keeps distinct comments with the same timestamp', () => {
+    const timestamp = '2026-02-27T18:58:47.613Z';
+    const events = [makeCommentEvent('1', timestamp), makeCommentEvent('2', timestamp)];
+
+    const deduped = _internal.dedupeBatchEvents(events);
     expect(deduped).toHaveLength(2);
-    expect(deduped.map(event => event.type)).toEqual(['comment_added', 'review_submitted']);
+    expect(
+      deduped.map(event => event.data?.type === 'comment_added' && event.data.comment.id)
+    ).toEqual(['1', '2']);
   });
 
   test('cooldown dedupes repeated pr_opened for same pr in short window', () => {

@@ -121,6 +121,12 @@ export function startPoller(options: PollerOptions): () => void {
   const safeIntervalMs = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 30_000;
   let inFlight = false;
 
+  if (pollerTimer) {
+    clearInterval(pollerTimer);
+    pollerTimer = null;
+  }
+  missingStreaks.clear();
+
   async function tick(): Promise<void> {
     if (inFlight) return;
     inFlight = true;
@@ -146,6 +152,7 @@ export function startPoller(options: PollerOptions): () => void {
       clearInterval(pollerTimer);
       pollerTimer = null;
     }
+    missingStreaks.clear();
   };
 }
 

@@ -54,6 +54,15 @@ function pruneRecentEvents(now = Date.now(), windowMs = DUPLICATE_EVENT_WINDOW_M
 }
 
 function batchCoarseKey(event: PrEvent): string {
+  if (
+    event.data?.type === 'review_submitted' ||
+    event.data?.type === 'comment_added' ||
+    event.data?.type === 'checks_changed' ||
+    event.data?.type === 'labels_changed'
+  ) {
+    return `batch:${eventKey(event)}`;
+  }
+
   return `batch:${event.type}:${event.prKey}:${event.timestamp}`;
 }
 

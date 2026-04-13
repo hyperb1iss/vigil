@@ -39,17 +39,28 @@ function diffSinglePr(
   now: string,
   events: PrEvent[]
 ): void {
+  const hydrationRefresh = isHydrationRefresh(prev, pr);
   diffStateTransitions(key, prev, pr, now, events);
   diffDraftTransitions(key, prev, pr, now, events);
-  diffNewReviews(key, prev, pr, now, events);
-  diffNewComments(key, prev, pr, now, events);
-  diffCheckChanges(key, prev, pr, now, events);
-  diffConflicts(key, prev, pr, now, events);
+  if (!hydrationRefresh) {
+    diffNewReviews(key, prev, pr, now, events);
+    diffNewComments(key, prev, pr, now, events);
+    diffCheckChanges(key, prev, pr, now, events);
+    diffConflicts(key, prev, pr, now, events);
+  }
   diffLabels(key, prev, pr, now, events);
 
-  if (isReadyToMerge(pr) && !isReadyToMerge(prev)) {
+  if (!hydrationRefresh && isReadyToMerge(pr) && !isReadyToMerge(prev)) {
     events.push({ type: 'ready_to_merge', prKey: key, pr, timestamp: now });
   }
+}
+
+function isHydrationRefresh(prev: PullRequest, curr: PullRequest): boolean {
+  return (
+    prev.dataSource === 'search' &&
+    curr.dataSource === 'detail' &&
+    prev.updatedAt === curr.updatedAt
+  );
 }
 
 function diffStateTransitions(
@@ -186,8 +197,16 @@ function diffLabels(
 function checksChanged(prev: PullRequest, curr: PullRequest): boolean {
   if (prev.checks.length !== curr.checks.length) return true;
 
-  const prevMap = new Map(prev.checks.map(c => [c.name, c.conclusion]));
-  return curr.checks.some(c => prevMap.get(c.name) !== c.conclusion);
+  const prevMap = new Map(prev.checks.map(check => [checkIdentity(check), serializeCheck(check)]));
+  return curr.checks.some(check => prevMap.get(checkIdentity(check)) !== serializeCheck(check));
+}
+
+function checkIdentity(check: PullRequest['checks'][number]): string {
+  return `${check.workflowName ?? ''}:${check.name}`;
+}
+
+function serializeCheck(check: PullRequest['checks'][number]): string {
+  return `${check.status}:${check.conclusion ?? 'pending'}`;
 }
 
 /** Determine if a PR is in a "ready to merge" state. */
