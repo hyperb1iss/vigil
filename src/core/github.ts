@@ -18,9 +18,11 @@ import type {
   PrReview,
   PrReviewRequest,
   PullRequest,
+  RepoRuntimeContext,
   ReviewDecision,
   ReviewState,
 } from '../types/index.js';
+import { attachWorktreesToPrs } from './worktrees.js';
 
 // ─── Error Types ────────────────────────────────────────────────────────────
 
@@ -631,7 +633,8 @@ async function runWithConcurrency<T>(
  */
 export async function fetchMyOpenPrs(
   repos?: string[],
-  knownPrs?: Map<string, PullRequest>
+  knownPrs?: Map<string, PullRequest>,
+  repoContexts?: Map<string, RepoRuntimeContext>
 ): Promise<PullRequest[]> {
   // Pass 1: Discover open PRs via search
   const searchArgs = [
@@ -669,18 +672,15 @@ export async function fetchMyOpenPrs(
     prMap.set(pr.key, pr);
   }
 
-  // Cold start optimization: return quickly on first poll and hydrate details
-  // on subsequent polls. This avoids a blank "waiting" screen while we fan out
-  // `gh pr list` across many repos.
-  if (!knownPrs || knownPrs.size === 0) {
+  const detailRepos = findDetailRepos(repoSet, searchResults, knownPrs, prMap, repoContexts);
+  const shouldReturnSearchStubsOnly =
+    detailRepos.size === 0 && (!repoContexts || repoContexts.size === 0);
+  if (shouldReturnSearchStubsOnly) {
     return [...prMap.values()];
   }
 
-  // Short-circuit: only fetch detail for repos with changed PRs
-  const staleRepos = findStaleRepos(repoSet, searchResults, knownPrs, prMap);
-
   // Pass 2: Fetch full detail only for stale repos, with bounded concurrency.
-  await runWithConcurrency([...staleRepos], DETAIL_FETCH_CONCURRENCY, async nameWithOwner => {
+  await runWithConcurrency([...detailRepos], DETAIL_FETCH_CONCURRENCY, async nameWithOwner => {
     try {
       const detailJson = await runGh([
         'pr',
@@ -707,6 +707,7 @@ export async function fetchMyOpenPrs(
     }
   });
 
+  await attachWorktreesToPrs(prMap, repoContexts);
   return [...prMap.values()];
 }
 
@@ -808,14 +809,22 @@ function extractApiPath(url: string): string {
 // ─── Stale Repo Detection ────────────────────────────────────────────────────
 
 /** Determine which repos need a detail fetch by comparing updatedAt timestamps. */
-function findStaleRepos(
+function findDetailRepos(
   repoSet: Set<string>,
   searchResults: GhSearchPr[],
   knownPrs: Map<string, PullRequest> | undefined,
-  prMap: Map<string, PullRequest>
+  prMap: Map<string, PullRequest>,
+  repoContexts?: Map<string, RepoRuntimeContext>
 ): Set<string> {
+  const reposNeedingContext = new Set<string>();
+  for (const repo of repoContexts?.keys() ?? []) {
+    if (repoSet.has(repo)) {
+      reposNeedingContext.add(repo);
+    }
+  }
+
   if (!knownPrs || knownPrs.size === 0) {
-    return new Set(repoSet);
+    return reposNeedingContext;
   }
 
   const stale = new Set<string>();
@@ -825,6 +834,10 @@ function findStaleRepos(
     } else {
       carryForwardKnown(repo, knownPrs, prMap);
     }
+  }
+
+  for (const repo of reposNeedingContext) {
+    stale.add(repo);
   }
   return stale;
 }
@@ -881,6 +894,7 @@ export const _internal = {
   buildPrFromDetail,
   buildPrFromSearch,
   carryForwardKnown,
+  findDetailRepos,
   isTransientGhFailure,
   formatGhArgsForError,
 };

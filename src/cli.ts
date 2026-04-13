@@ -10,6 +10,7 @@ import { startActionExecutor } from './agents/executor.js';
 import { handleEvents } from './agents/orchestrator.js';
 import { App } from './app.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
+import { loadRuntimeRepoContexts } from './config/runtime.js';
 import { seedMockData } from './core/mock-data.js';
 import { startPoller } from './core/poller.js';
 import { type RadarChange, startRadarPoller } from './core/radar-poller.js';
@@ -289,6 +290,7 @@ async function main(): Promise<void> {
 
   // Load config
   const config = loadGlobalConfig();
+  const repoContexts = await loadRuntimeRepoContexts();
 
   // Apply CLI overrides
   if (argv.mode) {
@@ -319,6 +321,7 @@ async function main(): Promise<void> {
       radarPollIntervalMs: config.radar.pollIntervalMs,
       mode: config.defaultMode,
       agentLogPath,
+      localRepoContexts: repoContexts.size,
     },
   });
   console.error(`[vigil] agent activity log: ${agentLogPath}`);
@@ -354,7 +357,7 @@ async function main(): Promise<void> {
       logAgentActivity('orchestrator_dispatch', {
         data: { count: events.length },
       });
-      await handleEvents(events);
+      await handleEvents(events, repoContexts);
       logAgentActivity('orchestrator_dispatch_complete', {
         data: {
           queueSize: store.actionQueue.length,
@@ -369,6 +372,7 @@ async function main(): Promise<void> {
   const cleanup = startPoller({
     intervalMs: config.pollIntervalMs,
     repos,
+    repoContexts,
     onEvents,
     onError: error => {
       // Silently handle poll errors — the TUI will show stale data indicator
@@ -400,7 +404,7 @@ async function main(): Promise<void> {
         })
       : undefined;
 
-  const stopExecutor = startActionExecutor();
+  const stopExecutor = startActionExecutor(undefined, { repoContexts });
 
   // Render TUI
   const { waitUntilExit } = render(React.createElement(App));

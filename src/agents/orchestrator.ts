@@ -6,6 +6,7 @@
  * YOLO mode: actions auto-execute unless their type is in the repo's alwaysConfirm list.
  */
 
+import { resolveWorktreeTargetDir } from '../core/worktrees.js';
 import { vigilStore } from '../store/index.js';
 import type {
   ActionType,
@@ -16,7 +17,7 @@ import type {
   TriageResult,
   TriageRouting,
 } from '../types/agents.js';
-import type { RepoConfig } from '../types/config.js';
+import type { RepoConfig, RepoRuntimeContext } from '../types/config.js';
 import type { EventType, PrEvent } from '../types/events.js';
 import { logAgentActivity } from './activity-log.js';
 import { runEvidenceAgent } from './evidence.js';
@@ -253,14 +254,23 @@ function applyModePolicy(
   };
 }
 
-function makeNoWorktreeAction(event: PrEvent, triage: TriageResult): ProposedAction {
+function makeCreateWorktreeAction(
+  event: PrEvent,
+  triage: TriageResult,
+  repoContext: RepoRuntimeContext
+): ProposedAction {
+  const targetDir = resolveWorktreeTargetDir(
+    repoContext.repoDir,
+    event.pr.headRefName,
+    repoContext
+  );
   return {
     id: crypto.randomUUID(),
     type: 'create_worktree',
     prKey: event.prKey,
     agent: 'triage',
-    description: `Missing worktree for ${event.prKey}; cannot run ${triage.routing} agent automatically.`,
-    detail: triage.reasoning,
+    description: `Create a local worktree for ${event.pr.headRefName} before running ${triage.routing}.`,
+    detail: `${triage.reasoning}\n\nTarget path: ${targetDir}`,
     requiresConfirmation: true,
     status: 'pending',
   };
@@ -282,7 +292,7 @@ async function buildAction(
   event: PrEvent,
   triage: TriageResult,
   mode: 'hitl' | 'yolo',
-  repoConfig?: RepoConfig | null | undefined
+  repoContext?: RepoRuntimeContext | null | undefined
 ): Promise<ProposedAction | null> {
   switch (triage.routing) {
     case 'dismiss':
@@ -290,13 +300,31 @@ async function buildAction(
 
     case 'respond': {
       const action = await runRespondAgent(event, event.pr);
-      return applyModePolicy(action, mode, repoConfig);
+      return applyModePolicy(action, mode, repoContext?.config);
     }
 
     case 'fix': {
       const worktreePath = event.pr.worktree?.path;
       if (!worktreePath) {
-        return applyModePolicy(makeNoWorktreeAction(event, triage), mode, repoConfig);
+        if (!repoContext) {
+          return makeFailedAction(
+            event,
+            'create_worktree',
+            `Missing local repo context for ${event.pr.repository.nameWithOwner}; cannot create a worktree automatically.`
+          );
+        }
+        if (!event.pr.headRefName) {
+          return makeFailedAction(
+            event,
+            'create_worktree',
+            `Missing branch metadata for ${event.prKey}; cannot create a worktree yet.`
+          );
+        }
+        return applyModePolicy(
+          makeCreateWorktreeAction(event, triage, repoContext),
+          mode,
+          repoContext.config
+        );
       }
 
       const result = await runFixAgent(event, event.pr, worktreePath);
@@ -304,22 +332,40 @@ async function buildAction(
       if (!action) {
         return makeFailedAction(event, 'apply_fix', result.summary);
       }
-      return applyModePolicy(action, mode, repoConfig);
+      return applyModePolicy(action, mode, repoContext?.config);
     }
 
     case 'rebase': {
       const worktreePath = event.pr.worktree?.path;
       if (!worktreePath) {
-        return applyModePolicy(makeNoWorktreeAction(event, triage), mode, repoConfig);
+        if (!repoContext) {
+          return makeFailedAction(
+            event,
+            'create_worktree',
+            `Missing local repo context for ${event.pr.repository.nameWithOwner}; cannot create a worktree automatically.`
+          );
+        }
+        if (!event.pr.headRefName) {
+          return makeFailedAction(
+            event,
+            'create_worktree',
+            `Missing branch metadata for ${event.prKey}; cannot create a worktree yet.`
+          );
+        }
+        return applyModePolicy(
+          makeCreateWorktreeAction(event, triage, repoContext),
+          mode,
+          repoContext.config
+        );
       }
 
       const action = await runRebaseAgent(event, event.pr, worktreePath);
-      return applyModePolicy(action, mode, repoConfig);
+      return applyModePolicy(action, mode, repoContext?.config);
     }
 
     case 'evidence': {
       const action = await runEvidenceAgent(event, event.pr, event.pr.worktree?.path);
-      return applyModePolicy(action, mode, repoConfig);
+      return applyModePolicy(action, mode, repoContext?.config);
     }
   }
 }
@@ -336,7 +382,7 @@ async function buildAction(
  */
 export async function handleEvents(
   events: PrEvent[],
-  repoConfig?: RepoConfig | null | undefined
+  repoContexts?: Map<string, RepoRuntimeContext>
 ): Promise<void> {
   const dedupedEvents = dedupeBatchEvents(events);
   logAgentActivity('orchestrator_batch_start', {
@@ -423,7 +469,8 @@ export async function handleEvents(
       continue;
     }
 
-    const action = await buildAction(event, triage, vigilStore.getState().mode, repoConfig);
+    const repoContext = repoContexts?.get(event.pr.repository.nameWithOwner);
+    const action = await buildAction(event, triage, vigilStore.getState().mode, repoContext);
     if (action) {
       logAgentActivity('orchestrator_action_built', {
         prKey: action.prKey,

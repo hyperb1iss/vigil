@@ -1,4 +1,5 @@
 import { vigilStore } from '../store/index.js';
+import type { RepoRuntimeContext } from '../types/config.js';
 import type { PrEvent } from '../types/events.js';
 import type { PullRequest } from '../types/pr.js';
 import { diffPrs } from './differ.js';
@@ -8,6 +9,7 @@ import { classifyPr } from './state-machine.js';
 export interface PollerOptions {
   intervalMs: number;
   repos?: string[] | undefined;
+  repoContexts?: Map<string, RepoRuntimeContext> | undefined;
   onEvents?: ((events: PrEvent[]) => Promise<void>) | undefined;
   onError?: ((error: unknown) => void) | undefined;
 }
@@ -65,14 +67,17 @@ function stabilizeCurrentSnapshot(
  *  4. Update store
  *  5. Return events for agent orchestration
  */
-export async function poll(repos?: string[]): Promise<PrEvent[]> {
+export async function poll(
+  repos?: string[],
+  repoContexts?: Map<string, RepoRuntimeContext>
+): Promise<PrEvent[]> {
   const store = vigilStore;
   const state = store.getState();
 
   store.getState().setPolling(true);
 
   try {
-    const prs = await fetchMyOpenPrs(repos, state.prs);
+    const prs = await fetchMyOpenPrs(repos, state.prs, repoContexts);
 
     // Build current snapshot
     const currentMap = new Map<string, PullRequest>();
@@ -112,7 +117,7 @@ export async function poll(repos?: string[]): Promise<PrEvent[]> {
  * Start the polling loop. Returns a cleanup function.
  */
 export function startPoller(options: PollerOptions): () => void {
-  const { intervalMs, repos, onEvents, onError } = options;
+  const { intervalMs, repos, repoContexts, onEvents, onError } = options;
   const safeIntervalMs = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 30_000;
   let inFlight = false;
 
@@ -121,7 +126,7 @@ export function startPoller(options: PollerOptions): () => void {
     inFlight = true;
 
     try {
-      const events = await poll(repos);
+      const events = await poll(repos, repoContexts);
       if (events.length > 0 && onEvents) {
         await onEvents(events);
       }

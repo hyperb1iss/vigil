@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/agents.js';
 import { executeAction } from './executor.js';
 
@@ -16,6 +17,11 @@ function makeAction(overrides: Partial<ProposedAction> = {}): ProposedAction {
   };
 }
 
+afterEach(() => {
+  vigilStore.getState().setPrs(new Map());
+  mock.restore();
+});
+
 describe('executeAction', () => {
   test('returns a no-op summary for dismiss', async () => {
     const output = await executeAction(makeAction({ type: 'dismiss' }));
@@ -27,9 +33,82 @@ describe('executeAction', () => {
     expect(output).toContain('No-op executor');
   });
 
-  test('throws for unsupported create_worktree', async () => {
+  test('creates a worktree and updates the PR state when context is available', async () => {
+    vigilStore.getState().setPrs(
+      new Map([
+        [
+          'owner/repo#1',
+          {
+            key: 'owner/repo#1',
+            number: 1,
+            title: 'Test PR',
+            body: '',
+            url: 'https://github.com/owner/repo/pull/1',
+            repository: { name: 'repo', nameWithOwner: 'owner/repo' },
+            author: { login: 'dev', isBot: false },
+            headRefName: 'feat/test',
+            baseRefName: 'main',
+            isDraft: false,
+            state: 'OPEN',
+            mergeable: 'UNKNOWN',
+            mergeStateStatus: 'UNKNOWN',
+            reviewDecision: '',
+            reviews: [],
+            comments: [],
+            checks: [],
+            labels: [],
+            reviewRequests: [],
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+            createdAt: '2026-03-01T00:00:00Z',
+            updatedAt: '2026-03-01T00:00:00Z',
+          },
+        ],
+      ])
+    );
+
+    const createWorktreeFn = mock(async () => '/tmp/worktrees/repo/feat/test');
+    const getWorktreeStatusFn = mock(async () => ({
+      path: '/tmp/worktrees/repo/feat/test',
+      branch: 'feat/test',
+      isClean: true,
+      uncommittedChanges: 0,
+    }));
+
+    const output = await executeAction(makeAction({ type: 'create_worktree' }), {
+      repoContexts: new Map([
+        [
+          'owner/repo',
+          {
+            repoDir: '/tmp/repos/repo',
+            config: {
+              owner: 'owner',
+              repo: 'repo',
+              baseBranch: 'main',
+              worktrees: {
+                autoDiscover: true,
+                searchPaths: ['/tmp/worktrees/repo'],
+                displayFormat: 'both',
+              },
+            },
+          },
+        ],
+      ]),
+      createWorktreeFn,
+      getWorktreeStatusFn,
+    });
+
+    expect(output).toContain('Created worktree');
+    expect(createWorktreeFn).toHaveBeenCalledTimes(1);
+    expect(vigilStore.getState().prs.get('owner/repo#1')?.worktree?.path).toBe(
+      '/tmp/worktrees/repo/feat/test'
+    );
+  });
+
+  test('throws when create_worktree has no local repo context', async () => {
     await expect(executeAction(makeAction({ type: 'create_worktree' }))).rejects.toThrow(
-      'not implemented'
+      'No local repo context'
     );
   });
 

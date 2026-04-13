@@ -18,6 +18,7 @@ const {
   buildPrFromDetail,
   buildPrFromSearch,
   carryForwardKnown,
+  findDetailRepos,
   formatGhArgsForError,
   isTransientGhFailure,
 } = _internal;
@@ -678,5 +679,105 @@ describe('carryForwardKnown', () => {
 
     expect(prMap.has('owner/repo#1')).toBe(false);
     expect(prMap.get('owner/repo#2')?.updatedAt).toBe('2026-02-20T00:00:00Z');
+  });
+});
+
+describe('findDetailRepos', () => {
+  function makeSearchPr(repo: string, number: number, updatedAt: string) {
+    return {
+      number,
+      title: `PR ${number}`,
+      state: 'OPEN',
+      isDraft: false,
+      url: `https://github.com/${repo}/pull/${number}`,
+      body: '',
+      createdAt: updatedAt,
+      updatedAt,
+      labels: [],
+      repository: {
+        name: repo.split('/')[1] ?? repo,
+        nameWithOwner: repo,
+      },
+      author: { login: 'dev' },
+    };
+  }
+
+  function makePr(key: string, updatedAt: string) {
+    const [repo, numberStr] = key.split('#');
+    const repoName = repo.split('/')[1] ?? repo;
+    return {
+      key,
+      number: Number(numberStr),
+      title: `PR ${numberStr}`,
+      body: '',
+      url: `https://github.com/${repo}/pull/${numberStr}`,
+      repository: { name: repoName, nameWithOwner: repo },
+      author: { login: 'dev', isBot: false },
+      headRefName: 'feat/x',
+      baseRefName: 'main',
+      isDraft: false,
+      state: 'OPEN' as const,
+      mergeable: 'UNKNOWN' as const,
+      mergeStateStatus: 'UNKNOWN' as const,
+      reviewDecision: '' as const,
+      reviews: [],
+      comments: [],
+      checks: [],
+      labels: [],
+      reviewRequests: [],
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      createdAt: updatedAt,
+      updatedAt,
+    };
+  }
+
+  test('keeps cold starts fast when no repo context needs detail hydration', () => {
+    const repos = new Set(['owner/repo']);
+    const searchResults = [makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z')];
+
+    expect(findDetailRepos(repos, searchResults, undefined, new Map())).toEqual(new Set());
+  });
+
+  test('hydrates cold-start repos that have local runtime context', () => {
+    const repos = new Set(['owner/repo', 'other/repo']);
+    const searchResults = [
+      makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z'),
+      makeSearchPr('other/repo', 2, '2026-03-01T00:00:00Z'),
+    ];
+    const repoContexts = new Map([
+      [
+        'owner/repo',
+        {
+          repoDir: '/tmp/owner-repo',
+          config: { owner: 'owner', repo: 'repo', baseBranch: 'main' },
+        },
+      ],
+    ]);
+
+    expect(findDetailRepos(repos, searchResults, undefined, new Map(), repoContexts)).toEqual(
+      new Set(['owner/repo'])
+    );
+  });
+
+  test('forces detail refresh for repos with local runtime context even when unchanged', () => {
+    const repos = new Set(['owner/repo']);
+    const searchResults = [makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z')];
+    const known = new Map([['owner/repo#1', makePr('owner/repo#1', '2026-03-01T00:00:00Z')]]);
+    const prMap = new Map([['owner/repo#1', makePr('owner/repo#1', '2026-03-01T00:00:00Z')]]);
+    const repoContexts = new Map([
+      [
+        'owner/repo',
+        {
+          repoDir: '/tmp/owner-repo',
+          config: { owner: 'owner', repo: 'repo', baseBranch: 'main' },
+        },
+      ],
+    ]);
+
+    expect(findDetailRepos(repos, searchResults, known, prMap, repoContexts)).toEqual(
+      new Set(['owner/repo'])
+    );
   });
 });

@@ -1,9 +1,13 @@
 import { execFile } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import simpleGit from 'simple-git';
 
-import type { PrWorktree } from '../types/pr.js';
+import type { RepoRuntimeContext } from '../types/config.js';
+import type { PrWorktree, PullRequest } from '../types/pr.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,10 +51,8 @@ function parsePorcelainOutput(output: string): WorktreeInfo[] {
         sha = line.slice('HEAD '.length);
       } else if (line.startsWith('branch ')) {
         const ref = line.slice('branch '.length);
-        // Strip refs/heads/ prefix to get the bare branch name
         branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref;
       }
-      // `detached` lines are intentionally ignored
     }
 
     if (path && sha && branch) {
@@ -76,6 +78,54 @@ async function listWorktreesInDir(dir: string): Promise<WorktreeInfo[]> {
   }
 }
 
+function expandPath(path: string): string {
+  if (path === '~') {
+    return homedir();
+  }
+
+  if (path.startsWith('~/') || path.startsWith('~\\')) {
+    return resolve(homedir(), path.slice(2));
+  }
+
+  return path;
+}
+
+export function resolveWorktreeSearchPaths(
+  repoDir: string,
+  repoContext?: RepoRuntimeContext | null | undefined
+): string[] {
+  const roots = new Set<string>();
+  const config = repoContext?.config.worktrees;
+
+  if (config?.autoDiscover ?? true) {
+    roots.add(resolve(repoDir));
+  }
+
+  for (const searchPath of config?.searchPaths ?? []) {
+    roots.add(resolve(repoDir, expandPath(searchPath)));
+  }
+
+  if (roots.size === 0) {
+    roots.add(resolve(repoDir));
+  }
+
+  return [...roots];
+}
+
+export function resolveWorktreeTargetDir(
+  repoDir: string,
+  branch: string,
+  repoContext?: RepoRuntimeContext | null | undefined
+): string {
+  const configuredRoot = repoContext?.config.worktrees?.searchPaths[0];
+  const baseDir = configuredRoot
+    ? resolve(repoDir, expandPath(configuredRoot))
+    : resolve(dirname(repoDir), '.vigil-worktrees', basename(repoDir));
+
+  const segments = branch.split('/').filter(Boolean);
+  return resolve(baseDir, ...segments);
+}
+
 /**
  * Discover all git worktrees across search paths and return a map of
  * branch name to worktree info.
@@ -89,7 +139,6 @@ export async function discoverWorktrees(
   const dirs = searchPaths && searchPaths.length > 0 ? searchPaths : [process.cwd()];
   const map = new Map<string, WorktreeInfo>();
 
-  // Fan out discovery across all search paths concurrently
   const results = await Promise.all(dirs.map(dir => listWorktreesInDir(dir)));
 
   for (const worktrees of results) {
@@ -103,11 +152,6 @@ export async function discoverWorktrees(
 
 // ─── Matching ────────────────────────────────────────────────────────
 
-/**
- * Find the worktree entry that corresponds to a PR branch name.
- * Handles both bare names (`feature-x`) and fully-qualified refs
- * (`refs/heads/feature-x`).
- */
 export function findWorktreeForBranch(
   branch: string,
   worktrees: Map<string, WorktreeInfo>
@@ -118,10 +162,6 @@ export function findWorktreeForBranch(
 
 // ─── Status ──────────────────────────────────────────────────────────
 
-/**
- * Get the worktree status for the given path using simple-git.
- * Returns a `PrWorktree` with cleanliness info and uncommitted change count.
- */
 export async function getWorktreeStatus(path: string): Promise<PrWorktree> {
   const git = simpleGit(path);
   const status = await git.status();
@@ -144,18 +184,101 @@ export async function getWorktreeStatus(path: string): Promise<PrWorktree> {
 
 // ─── Creation ────────────────────────────────────────────────────────
 
-/**
- * Create a new worktree for the given branch at `targetDir`.
- * Runs `git worktree add <targetDir> <branch>` inside `repoDir`.
- * Returns the absolute path of the created worktree.
- */
+async function refExists(repoDir: string, ref: string): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['show-ref', '--verify', '--quiet', ref], {
+      cwd: repoDir,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function createWorktree(
   repoDir: string,
   branch: string,
   targetDir: string
 ): Promise<string> {
-  await execFileAsync('git', ['worktree', 'add', targetDir, branch], {
+  const absoluteTargetDir = resolve(targetDir);
+  mkdirSync(dirname(absoluteTargetDir), { recursive: true });
+
+  if (await refExists(repoDir, `refs/heads/${branch}`)) {
+    await execFileAsync('git', ['worktree', 'add', absoluteTargetDir, branch], {
+      cwd: repoDir,
+    });
+    return absoluteTargetDir;
+  }
+
+  if (await refExists(repoDir, `refs/remotes/origin/${branch}`)) {
+    await execFileAsync(
+      'git',
+      ['worktree', 'add', '-b', branch, absoluteTargetDir, `origin/${branch}`],
+      {
+        cwd: repoDir,
+      }
+    );
+    return absoluteTargetDir;
+  }
+
+  await execFileAsync('git', ['worktree', 'add', absoluteTargetDir, branch], {
     cwd: repoDir,
   });
-  return targetDir;
+  return absoluteTargetDir;
 }
+
+export async function attachWorktreesToPrs(
+  prs: Map<string, PullRequest>,
+  repoContexts?: Map<string, RepoRuntimeContext>
+): Promise<void> {
+  if (!repoContexts || repoContexts.size === 0) {
+    return;
+  }
+
+  await Promise.all(
+    [...repoContexts.entries()].map(async ([nameWithOwner, repoContext]) => {
+      const matchingPrs = [...prs.values()].filter(
+        pr => pr.repository.nameWithOwner === nameWithOwner && pr.headRefName
+      );
+
+      if (matchingPrs.length === 0) {
+        return;
+      }
+
+      try {
+        const worktrees = await discoverWorktrees(
+          resolveWorktreeSearchPaths(repoContext.repoDir, repoContext)
+        );
+        if (worktrees.size === 0) {
+          return;
+        }
+
+        await Promise.all(
+          matchingPrs.map(async pr => {
+            try {
+              const worktree = findWorktreeForBranch(pr.headRefName, worktrees);
+              if (!worktree) {
+                pr.worktree = undefined;
+                return;
+              }
+
+              pr.worktree = await getWorktreeStatus(worktree.path);
+            } catch {
+              pr.worktree = undefined;
+            }
+          })
+        );
+      } catch {
+        // Local worktree lookup is best-effort and must not fail polling.
+      }
+    })
+  );
+}
+
+export const _internal = {
+  expandPath,
+  parsePorcelainOutput,
+  refExists,
+  resolveWorktreeSearchPaths,
+  resolveWorktreeTargetDir,
+};

@@ -70,6 +70,11 @@ export interface RepoConfig {
   worktrees?: WorktreeConfig | undefined;
 }
 
+export interface RepoRuntimeContext {
+  repoDir: string;
+  config: RepoConfig;
+}
+
 export interface MonorepoConfig {
   tool: string;
   packageDirs: string[];

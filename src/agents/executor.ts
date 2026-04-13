@@ -1,6 +1,8 @@
 import { mergePr, postComment, runGh } from '../core/github.js';
+import { createWorktree, getWorktreeStatus, resolveWorktreeTargetDir } from '../core/worktrees.js';
 import { vigilStore } from '../store/index.js';
 import type { ProposedAction } from '../types/agents.js';
+import type { RepoRuntimeContext } from '../types/config.js';
 import { logAgentActivity } from './activity-log.js';
 
 const EXECUTOR_INTERVAL_MS = 1_000;
@@ -9,6 +11,12 @@ interface PrRef {
   owner: string;
   repo: string;
   number: number;
+}
+
+interface ExecutorOptions {
+  repoContexts?: Map<string, RepoRuntimeContext> | undefined;
+  createWorktreeFn?: typeof createWorktree;
+  getWorktreeStatusFn?: typeof getWorktreeStatus;
 }
 
 function parsePrKey(prKey: string): PrRef {
@@ -32,7 +40,10 @@ function requireDetail(action: ProposedAction): string {
   return text;
 }
 
-export async function executeAction(action: ProposedAction): Promise<string> {
+export async function executeAction(
+  action: ProposedAction,
+  options?: ExecutorOptions
+): Promise<string> {
   logAgentActivity('executor_action_start', {
     agent: action.agent,
     prKey: action.prKey,
@@ -74,13 +85,36 @@ export async function executeAction(action: ProposedAction): Promise<string> {
     case 'dismiss':
       return 'Dismissed.';
 
+    case 'create_worktree': {
+      const ref = parsePrKey(action.prKey);
+      const repoContext = options?.repoContexts?.get(`${ref.owner}/${ref.repo}`);
+      if (!repoContext) {
+        throw new Error(`No local repo context is registered for ${ref.owner}/${ref.repo}.`);
+      }
+
+      const pr = vigilStore.getState().prs.get(action.prKey);
+      if (!pr?.headRefName) {
+        throw new Error(`PR ${action.prKey} is missing branch metadata for worktree creation.`);
+      }
+
+      const targetDir = resolveWorktreeTargetDir(repoContext.repoDir, pr.headRefName, repoContext);
+      const createWorktreeFn = options?.createWorktreeFn ?? createWorktree;
+      const getWorktreeStatusFn = options?.getWorktreeStatusFn ?? getWorktreeStatus;
+      const worktreePath = await createWorktreeFn(repoContext.repoDir, pr.headRefName, targetDir);
+      const worktree = await getWorktreeStatusFn(worktreePath);
+      vigilStore.getState().updatePr(action.prKey, { worktree });
+      return `Created worktree for ${action.prKey} at ${worktreePath}.`;
+    }
+
     case 'push_commit':
-    case 'create_worktree':
       throw new Error(`Action "${action.type}" is not implemented by the executor.`);
   }
 }
 
-export function startActionExecutor(intervalMs = EXECUTOR_INTERVAL_MS): () => void {
+export function startActionExecutor(
+  intervalMs = EXECUTOR_INTERVAL_MS,
+  options?: ExecutorOptions
+): () => void {
   let inFlight = false;
 
   async function tick(): Promise<void> {
@@ -100,7 +134,7 @@ export function startActionExecutor(intervalMs = EXECUTOR_INTERVAL_MS): () => vo
 
       for (const action of approved) {
         try {
-          const output = await executeAction(action);
+          const output = await executeAction(action, options);
           vigilStore.getState().markActionExecuted(action.id, output);
           logAgentActivity('executor_action_success', {
             agent: action.agent,
