@@ -24,7 +24,7 @@ const CHROME_LINES_LIST = 6;
 
 // ─── Empty State ──────────────────────────────────────────────────────
 
-function EmptyState(): JSX.Element {
+function EmptyState({ fill = false }: { fill?: boolean } = {}): JSX.Element {
   const isPolling = useStore(vigilStore, s => s.isPolling);
   const radarIsPolling = useStore(vigilStore, s => s.radarIsPolling);
   const lastPollAt = useStore(vigilStore, s => s.lastPollAt);
@@ -50,7 +50,13 @@ function EmptyState(): JSX.Element {
   const actionVerb = effectiveError ? 'retry' : 'poll';
 
   return (
-    <Box flexDirection="column" alignItems="center" paddingY={2}>
+    <Box
+      flexDirection="column"
+      alignItems="center"
+      justifyContent={fill ? 'center' : undefined}
+      flexGrow={fill ? 1 : undefined}
+      paddingY={2}
+    >
       {/* Branded ASCII mark */}
       <Text color={palette.electricPurple} bold>
         {'██╗   ██╗'}
@@ -133,7 +139,7 @@ function CardGrid({
   const visible = items.slice(startIdx, startIdx + visibleCards);
 
   if (visible.length === 0) {
-    return <EmptyState />;
+    return <EmptyState fill />;
   }
 
   // Group into rows
@@ -143,7 +149,7 @@ function CardGrid({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1} gap={1}>
       {rows.map((row, rowIdx) => (
         <Box key={row[0]?.pr.key ?? rowIdx} gap={1}>
           {row.map(item => (
@@ -180,11 +186,11 @@ function ListView({
   const visible = items.slice(scrollOffset, scrollOffset + visibleRows);
 
   if (visible.length === 0) {
-    return <EmptyState />;
+    return <EmptyState fill />;
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {visible.map(item => (
         <PrRow
           key={item.key}
@@ -314,7 +320,7 @@ export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.E
   const isSearchActive = searchQuery !== null;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1}>
       {/* Status bar */}
       <StatusBar />
       {isSearchActive ? (
@@ -325,28 +331,30 @@ export function Dashboard({ onVisiblePrKeysChange }: DashboardProps = {}): JSX.E
         </Box>
       )}
 
-      {viewMode === 'cards' ? (
-        <CardGrid
-          items={sorted}
-          focusedPr={effectiveFocus}
-          termWidth={termWidth}
-          termRows={termRows}
-          scrollOffset={scrollOffset}
-        />
-      ) : (
-        <ListView
-          items={sorted}
-          focusedPr={effectiveFocus}
-          termRows={termRows}
-          scrollOffset={scrollOffset}
-        />
-      )}
+      <Box flexDirection="column" flexGrow={1}>
+        {viewMode === 'cards' ? (
+          <CardGrid
+            items={sorted}
+            focusedPr={effectiveFocus}
+            termWidth={termWidth}
+            termRows={termRows}
+            scrollOffset={scrollOffset}
+          />
+        ) : (
+          <ListView
+            items={sorted}
+            focusedPr={effectiveFocus}
+            termRows={termRows}
+            scrollOffset={scrollOffset}
+          />
+        )}
 
-      <ScrollIndicator
-        current={scrollOffset * numCols}
-        total={sorted.length}
-        visible={visibleCount}
-      />
+        <ScrollIndicator
+          current={scrollOffset * numCols}
+          total={sorted.length}
+          visible={visibleCount}
+        />
+      </Box>
 
       {/* Agent activity */}
       <AgentStatus />

@@ -513,14 +513,16 @@ export function App(): JSX.Element {
   return (
     <Box flexDirection="column" height={termRows}>
       {showHelp ? (
-        <HelpOverlay />
+        <Box flexGrow={1}>
+          <HelpOverlay />
+        </Box>
       ) : (
-        <>
+        <Box flexGrow={1}>
           {view === 'dashboard' && <Dashboard onVisiblePrKeysChange={onVisiblePrKeysChange} />}
           {view === 'detail' && <PrDetail />}
           {view === 'action' && <ActionPanel />}
           {view === 'activity' && <ActivityPanel />}
-        </>
+        </Box>
       )}
     </Box>
   );
