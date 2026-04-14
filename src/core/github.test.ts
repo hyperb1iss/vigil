@@ -209,6 +209,26 @@ describe('normalizeChecks', () => {
     const result = normalizeChecks([{ __typename: 'CheckRun', name: 'test' }]);
     expect(result[0]?.status).toBe('QUEUED');
   });
+
+  test('derives workflowName from CheckSuite workflow when present', () => {
+    const result = normalizeChecks([
+      {
+        __typename: 'CheckRun',
+        name: 'build',
+        status: 'COMPLETED',
+        conclusion: 'SUCCESS',
+        checkSuite: {
+          workflowRun: {
+            workflow: {
+              name: 'CI',
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(result[0]?.workflowName).toBe('CI');
+  });
 });
 
 // ─── mapStatusContextState ─────────────────────────────────────────────

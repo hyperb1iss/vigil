@@ -53,6 +53,13 @@ interface GhCheckRollupItem {
   status?: string;
   conclusion?: string;
   workflowName?: string;
+  checkSuite?: {
+    workflowRun?: {
+      workflow?: {
+        name?: string;
+      } | null;
+    } | null;
+  } | null;
   detailsUrl?: string;
   state?: string;
   context?: string;
@@ -347,7 +354,13 @@ const RADAR_PR_NODE_FIELDS = `
           name
           status
           conclusion
-          workflowName
+          checkSuite {
+            workflowRun {
+              workflow {
+                name
+              }
+            }
+          }
           detailsUrl
         }
         ... on StatusContext {
@@ -511,7 +524,7 @@ function normalizeChecks(items: GhCheckRollupItem[] | null | undefined): PrCheck
       name: item.name ?? 'unknown',
       status: (item.status ?? 'QUEUED') as CheckStatus,
       conclusion: (item.conclusion as CheckConclusion) ?? null,
-      workflowName: item.workflowName,
+      workflowName: item.workflowName ?? item.checkSuite?.workflowRun?.workflow?.name,
       detailsUrl: item.detailsUrl,
     };
   });
