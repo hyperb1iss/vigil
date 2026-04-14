@@ -6,6 +6,7 @@
 
 <sub>AI-powered PR lifecycle management for the terminal</sub>
 
+[![CI](https://img.shields.io/github/actions/workflow/status/hyperb1iss/vigil/ci.yml?branch=main&style=for-the-badge&logo=github&logoColor=white&label=CI)](https://github.com/hyperb1iss/vigil/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-e135ff?style=for-the-badge&logo=apache&logoColor=white)](https://opensource.org/licenses/Apache-2.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-80ffea?style=for-the-badge&logo=typescript&logoColor=black)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-Runtime-f1fa8c?style=for-the-badge&logo=bun&logoColor=black)](https://bun.sh)
@@ -63,7 +64,7 @@ Every PR is classified into one of five states:
 | 🔴 **Hot** | Needs attention now | Failing CI, blocking reviews, merge conflicts |
 | 🟡 **Waiting** | Ball is elsewhere | Reviews pending, CI running |
 | 🟢 **Ready** | Ship it | All checks pass, approved, no conflicts |
-| ⚪ **Dormant** | Gone quiet | No activity in 48h+ |
+| ⚫ **Dormant** | Gone quiet | No activity in 48h+ |
 | 🟣 **Blocked** | Can't proceed | Draft, policy block, dependency |
 
 ## 🤖 Agents
@@ -100,7 +101,7 @@ bun run build
 bun run link  # Symlinks to ~/.local/bin/vigil
 ```
 
-## 🚀 Quick Start
+## ⚡ Quick Start
 
 ```bash
 vigil                                    # All your PRs, all repos
@@ -135,6 +136,7 @@ Built with [Ink](https://github.com/vadimdemedes/ink) and the **SilkCircuit Neon
 |-----|--------|
 | `v` | Cards ↔ list |
 | `s` | Sort: activity ↔ state |
+| `t` | Feed: mine ↔ incoming ↔ both |
 | `y` | HITL ↔ YOLO |
 | `r` | Force refresh |
 | `?` | Help overlay |
@@ -148,7 +150,7 @@ Built with [Ink](https://github.com/vadimdemedes/ink) and the **SilkCircuit Neon
 
 **🛡️ HITL** — The default. Every agent action shows up in the action panel first. You approve with a keypress. Nothing happens without your say-so.
 
-**🚀 YOLO** — Confident actions auto-execute. Uncertain ones still pause. Destructive operations (`force push`, `merge`, `close`, `delete branch`) **always** require confirmation — even in YOLO.
+**🪄 YOLO** — Confident actions auto-execute. Uncertain ones still pause. Destructive operations (`force push`, `merge`, `close`, `delete branch`) **always** require confirmation — even in YOLO.
 
 Toggle anytime with `y`.
 
@@ -271,8 +273,17 @@ Contributions welcome! Run `bun run check` before submitting.
 
 <p align="center">
   <sub>
-    If Vigil is keeping watch, give it a ⭐ or <a href="https://ko-fi.com/hyperb1iss">buy me a Monster Ultra Violet</a> ⚡️
+    If Vigil is keeping watch, give it a ⭐ or <a href="https://ko-fi.com/hyperb1iss">buy me a Monster Ultra Violet</a> ⚡
     <br><br>
-    ✦ Built with obsession by <a href="https://hyperbliss.tech"><strong>Hyperbliss Technologies</strong></a> ✦
+    ✦ Built with obsession by <a href="https://hyperbliss.tech"><strong>Stefanie Jane</strong></a> ✦
   </sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/hyperb1iss">
+    <img src="https://img.shields.io/badge/GitHub-hyperb1iss-181717?style=for-the-badge&logo=github" alt="GitHub">
+  </a>
+  <a href="https://bsky.app/profile/hyperbliss.tech">
+    <img src="https://img.shields.io/badge/Bluesky-@hyperbliss.tech-1185fe?style=for-the-badge&logo=bluesky" alt="Bluesky">
+  </a>
 </p>
