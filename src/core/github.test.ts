@@ -937,11 +937,13 @@ describe('findDetailRepos', () => {
     };
   }
 
-  test('keeps cold starts fast when no repo context needs detail hydration', () => {
+  test('hydrates every cold-start repo so startup states are fully populated', () => {
     const repos = new Set(['owner/repo']);
     const searchResults = [makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z')];
 
-    expect(findDetailRepos(repos, searchResults, undefined, new Map())).toEqual(new Set());
+    expect(findDetailRepos(repos, searchResults, undefined, new Map())).toEqual(
+      new Set(['owner/repo'])
+    );
   });
 
   test('hydrates cold-start repos that have local runtime context', () => {
@@ -961,7 +963,7 @@ describe('findDetailRepos', () => {
     ]);
 
     expect(findDetailRepos(repos, searchResults, undefined, new Map(), repoContexts)).toEqual(
-      new Set(['owner/repo'])
+      new Set(['owner/repo', 'other/repo'])
     );
   });
 

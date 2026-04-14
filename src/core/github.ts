@@ -1958,7 +1958,7 @@ function findDetailRepos(
   }
 
   if (!knownPrs || knownPrs.size === 0) {
-    return reposNeedingContext;
+    return new Set([...repoSet, ...reposNeedingContext]);
   }
 
   const stale = new Set<string>();
