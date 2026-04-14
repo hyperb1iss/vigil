@@ -17,11 +17,6 @@ import type { PullRequest } from '../types/pr.js';
 import { logAgentActivity, markAgentQuery } from './activity-log.js';
 import { sanitizeUntrustedText, UNTRUSTED_INPUT_NOTICE } from './prompt-safety.js';
 
-interface TextBlock {
-  type: 'text';
-  text: string;
-}
-
 // ─── MCP Tools (read-only context gathering) ────────────────────────────────
 
 const getPrContext = tool(
@@ -255,11 +250,11 @@ export async function runTriageAgent(event: PrEvent, pr: PullRequest): Promise<T
     for await (const message of stream) {
       // Accumulate assistant text for streaming display
       if (message.type === 'assistant') {
-        const textBlocks = message.message.content.filter(
-          (b: { type: string }): b is TextBlock => b.type === 'text'
-        );
-        if (textBlocks.length > 0) {
-          const text = textBlocks.map((b: TextBlock) => b.text).join('');
+        const text = message.message.content
+          .flatMap(block => (block.type === 'text' ? [block.text] : []))
+          .join('');
+
+        if (text.length > 0) {
           const current = vigilStore.getState().activeAgents.get(runId);
           store.updateAgentRun(runId, {
             streamingOutput: (current?.streamingOutput ?? '') + text,
