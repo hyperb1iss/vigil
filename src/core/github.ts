@@ -22,6 +22,7 @@ import type {
   ReviewDecision,
   ReviewState,
 } from '../types/index.js';
+import { getGitHubViewerLogin, runGitHubGraphqlWithRetry } from './github-client.js';
 import { attachWorktreesToPrs } from './worktrees.js';
 
 // ─── Error Types ────────────────────────────────────────────────────────────
@@ -209,28 +210,20 @@ interface GhGraphqlDetailPr {
 }
 
 interface GhGraphqlSearchPage<TNode> {
-  data?: {
-    search?: {
-      nodes?: Array<TNode | null> | null;
-    } | null;
-  } | null;
+  search?: GhConnection<TNode> | null;
 }
 
 interface GhGraphqlRepositoryPage<TNode> {
-  data?: {
-    repository?: {
-      pullRequests?: GhConnection<TNode> | null;
-    } | null;
+  repository?: {
+    pullRequests?: GhConnection<TNode> | null;
   } | null;
 }
 
 interface GhGraphqlViewerRepositoriesPage {
-  data?: {
-    viewer?: {
-      repositories?: GhConnection<{
-        nameWithOwner: string;
-      }> | null;
-    } | null;
+  viewer?: {
+    repositories?: GhConnection<{
+      nameWithOwner: string;
+    }> | null;
   } | null;
 }
 
@@ -242,34 +235,6 @@ const TRUNCATED_DETAIL_FETCH_CONCURRENCY = 4;
 const GH_TRANSIENT_RETRIES = 3;
 const GH_RETRY_BASE_DELAY_MS = 400;
 const GH_GRAPHQL_SEARCH_CEILING = 1000;
-
-/** Fields requested for per-repo detail pass */
-const DETAIL_FIELDS = [
-  'number',
-  'title',
-  'state',
-  'isDraft',
-  'labels',
-  'reviews',
-  'statusCheckRollup',
-  'mergeable',
-  'mergeStateStatus',
-  'reviewDecision',
-  'headRefName',
-  'baseRefName',
-  'url',
-  'body',
-  'comments',
-  'reviewRequests',
-  'assignees',
-  'additions',
-  'deletions',
-  'changedFiles',
-  'updatedAt',
-  'createdAt',
-  'mergedAt',
-  'author',
-].join(',');
 
 const GRAPHQL_SEARCH_DISCOVERY_QUERY = `
   query($searchQuery: String!, $endCursor: String) {
@@ -626,6 +591,323 @@ const GRAPHQL_REPOSITORY_DETAIL_QUERY = `
         pageInfo {
           hasNextPage
           endCursor
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_DETAIL_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        number
+        title
+        state
+        isDraft
+        url
+        body
+        createdAt
+        updatedAt
+        headRefName
+        baseRefName
+        mergeable
+        mergeStateStatus
+        reviewDecision
+        additions
+        deletions
+        changedFiles
+        mergedAt
+        labels(first: 100) {
+          nodes {
+            id
+            name
+            color
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+        reviews(first: 100) {
+          nodes {
+            id
+            body
+            state
+            submittedAt
+            author {
+              login
+              type: __typename
+              ... on User {
+                name
+              }
+              ... on Organization {
+                name
+              }
+              ... on EnterpriseUserAccount {
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+        comments(first: 100) {
+          nodes {
+            id
+            body
+            createdAt
+            url
+            author {
+              login
+              type: __typename
+              ... on User {
+                name
+              }
+              ... on Organization {
+                name
+              }
+              ... on EnterpriseUserAccount {
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                name
+                status
+                conclusion
+                workflowName
+                detailsUrl
+              }
+              ... on StatusContext {
+                context
+                state
+                targetUrl
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+        reviewRequests(first: 100) {
+          nodes {
+            requestedReviewer {
+              ... on User {
+                login
+                name
+              }
+              ... on Team {
+                slug
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+        assignees(first: 100) {
+          nodes {
+            login
+            name
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+        author {
+          login
+          type: __typename
+          ... on User {
+            name
+          }
+          ... on Organization {
+            name
+          }
+          ... on EnterpriseUserAccount {
+            name
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_LABELS_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        labels(first: 100, after: $endCursor) {
+          nodes {
+            id
+            name
+            color
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_REVIEWS_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviews(first: 100, after: $endCursor) {
+          nodes {
+            id
+            body
+            state
+            submittedAt
+            author {
+              login
+              type: __typename
+              ... on User {
+                name
+              }
+              ... on Organization {
+                name
+              }
+              ... on EnterpriseUserAccount {
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_COMMENTS_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        comments(first: 100, after: $endCursor) {
+          nodes {
+            id
+            body
+            createdAt
+            url
+            author {
+              login
+              type: __typename
+              ... on User {
+                name
+              }
+              ... on Organization {
+                name
+              }
+              ... on EnterpriseUserAccount {
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_CHECKS_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        statusCheckRollup {
+          contexts(first: 100, after: $endCursor) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                name
+                status
+                conclusion
+                workflowName
+                detailsUrl
+              }
+              ... on StatusContext {
+                context
+                state
+                targetUrl
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_REVIEW_REQUESTS_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewRequests(first: 100, after: $endCursor) {
+          nodes {
+            requestedReviewer {
+              ... on User {
+                login
+                name
+              }
+              ... on Team {
+                slug
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
+
+const GRAPHQL_PR_ASSIGNEES_PAGE_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        assignees(first: 100, after: $endCursor) {
+          nodes {
+            login
+            name
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
         }
       }
     }
@@ -1234,13 +1516,8 @@ async function fetchRepoDetailResults(repo: string): Promise<PullRequest[]> {
   return hydrateGraphqlDetailNodes(nodes, repo);
 }
 
-let viewerLoginCache: string | null = null;
-
 async function fetchViewerLogin(): Promise<string> {
-  if (viewerLoginCache) return viewerLoginCache;
-  const login = await runGhWithRetry(['api', 'user', '--jq', '.login']);
-  viewerLoginCache = login.trim();
-  return viewerLoginCache;
+  return getGitHubViewerLogin();
 }
 
 async function fetchRepositoryFallbackOpenPrs(
@@ -1278,35 +1555,49 @@ async function fetchRepoOpenPrDetailsViaRepository(
 }
 
 async function fetchViewerRepositoryNames(): Promise<string[]> {
-  const pages = await runGhGraphqlPages<GhGraphqlViewerRepositoriesPage>(
-    GRAPHQL_VIEWER_REPOSITORIES_QUERY
-  );
-  const names = pages.flatMap(page =>
-    flattenConnectionNodes(page.data?.viewer?.repositories?.nodes).map(repo => repo.nameWithOwner)
-  );
+  const names: string[] = [];
+  let endCursor: string | undefined;
+
+  for (;;) {
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlViewerRepositoriesPage>(
+      GRAPHQL_VIEWER_REPOSITORIES_QUERY,
+      { endCursor }
+    );
+    const connection = page.viewer?.repositories;
+    names.push(...flattenConnectionNodes(connection?.nodes).map(repo => repo.nameWithOwner));
+
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+
+    endCursor = nextCursor;
+  }
+
   return [...new Set(names)];
 }
 
 async function runGhGraphqlSearch<TNode>(query: string, searchQuery: string): Promise<TNode[]> {
-  const pages = await runGhGraphqlPages<GhGraphqlSearchPage<TNode>>(query, {
-    searchQuery,
-  });
-  return pages.flatMap(page => flattenConnectionNodes(page.data?.search?.nodes));
-}
+  const results: TNode[] = [];
+  let endCursor: string | undefined;
 
-async function runGhGraphqlPages<TPage>(
-  query: string,
-  variables: Record<string, string | undefined> = {}
-): Promise<TPage[]> {
-  const args = ['api', 'graphql', '--paginate', '--slurp', '-f', `query=${query}`];
+  for (;;) {
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlSearchPage<TNode>>(query, {
+      searchQuery,
+      endCursor,
+    });
+    const connection = page.search;
+    results.push(...flattenConnectionNodes(connection?.nodes));
 
-  for (const [key, value] of Object.entries(variables)) {
-    if (value === undefined) continue;
-    args.push('-f', `${key}=${value}`);
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+
+    endCursor = nextCursor;
   }
 
-  const json = await runGhWithRetry(args);
-  return JSON.parse(json) as TPage[];
+  return results;
 }
 
 async function runGhGraphqlRepositoryPullRequests<TNode>(
@@ -1318,23 +1609,12 @@ async function runGhGraphqlRepositoryPullRequests<TNode>(
   let endCursor: string | undefined;
 
   for (;;) {
-    const args = [
-      'api',
-      'graphql',
-      '-f',
-      `query=${query}`,
-      '-F',
-      `owner=${owner}`,
-      '-F',
-      `repo=${name}`,
-    ];
-    if (endCursor) {
-      args.push('-F', `endCursor=${endCursor}`);
-    }
-
-    const json = await runGhWithRetry(args);
-    const page = JSON.parse(json) as GhGraphqlRepositoryPage<TNode>;
-    const connection = page.data?.repository?.pullRequests;
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlRepositoryPage<TNode>>(query, {
+      owner,
+      repo: name,
+      endCursor,
+    });
+    const connection = page.repository?.pullRequests;
     results.push(...flattenConnectionNodes(connection?.nodes));
 
     const nextCursor = connection?.pageInfo?.endCursor;
@@ -1360,6 +1640,51 @@ function flattenConnectionNodes<T>(nodes: Array<T | null> | null | undefined): T
   return nodes.filter((node): node is T => node !== null);
 }
 
+function flattenRequestedReviewers(
+  nodes:
+    | Array<{
+        requestedReviewer?: {
+          login?: string;
+          name?: string;
+          slug?: string;
+        } | null;
+      } | null>
+    | null
+    | undefined
+): GhReviewRequest[] {
+  return flattenConnectionNodes(nodes)
+    .map(node => node.requestedReviewer)
+    .filter(
+      (
+        reviewer
+      ): reviewer is {
+        login?: string;
+        name?: string;
+        slug?: string;
+      } => reviewer !== null && reviewer !== undefined
+    );
+}
+
+async function collectConnectionNodes<TNode, TResponse>(
+  initialConnection: GhConnection<TNode> | null | undefined,
+  fetchPage: (endCursor: string) => Promise<TResponse>,
+  getConnection: (response: TResponse) => GhConnection<TNode> | null | undefined
+): Promise<TNode[]> {
+  const nodes = flattenConnectionNodes(initialConnection?.nodes);
+  let connection = initialConnection;
+
+  for (;;) {
+    const endCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !endCursor) {
+      return nodes;
+    }
+
+    const response = await fetchPage(endCursor);
+    connection = getConnection(response);
+    nodes.push(...flattenConnectionNodes(connection?.nodes));
+  }
+}
+
 function flattenGraphqlSearchPr(raw: GhGraphqlSearchPr): GhSearchPr {
   return {
     ...raw,
@@ -1374,18 +1699,139 @@ function flattenGraphqlDetailPr(raw: GhGraphqlDetailPr): GhPrDetail {
     reviews: flattenConnectionNodes(raw.reviews?.nodes),
     comments: flattenConnectionNodes(raw.comments?.nodes),
     statusCheckRollup: flattenConnectionNodes(raw.statusCheckRollup?.contexts?.nodes),
-    reviewRequests: flattenConnectionNodes(raw.reviewRequests?.nodes)
-      .map(node => node.requestedReviewer)
-      .filter(
-        (
-          reviewer
-        ): reviewer is {
-          login?: string;
-          name?: string;
-          slug?: string;
-        } => reviewer !== null && reviewer !== undefined
-      ),
+    reviewRequests: flattenRequestedReviewers(raw.reviewRequests?.nodes),
     assignees: flattenConnectionNodes(raw.assignees?.nodes),
+  };
+}
+
+async function hydrateTruncatedDetailPr(
+  owner: string,
+  repo: string,
+  number: number,
+  raw: GhGraphqlDetailPr
+): Promise<GhPrDetail> {
+  const [labels, reviews, comments, statusCheckRollup, reviewRequests, assignees] =
+    await Promise.all([
+      collectConnectionNodes(
+        raw.labels,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                labels?: GhConnection<GhLabel> | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_LABELS_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.labels
+      ),
+      collectConnectionNodes(
+        raw.reviews,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                reviews?: GhConnection<GhReview> | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_REVIEWS_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.reviews
+      ),
+      collectConnectionNodes(
+        raw.comments,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                comments?: GhConnection<GhCommentNode> | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_COMMENTS_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.comments
+      ),
+      collectConnectionNodes(
+        raw.statusCheckRollup?.contexts,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                statusCheckRollup?: {
+                  contexts?: GhConnection<GhCheckRollupItem> | null;
+                } | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_CHECKS_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.statusCheckRollup?.contexts
+      ),
+      collectConnectionNodes(
+        raw.reviewRequests,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                reviewRequests?: GhConnection<{
+                  requestedReviewer?: {
+                    login?: string;
+                    name?: string;
+                    slug?: string;
+                  } | null;
+                }> | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_REVIEW_REQUESTS_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.reviewRequests
+      ).then(nodes => flattenRequestedReviewers(nodes)),
+      collectConnectionNodes(
+        raw.assignees,
+        endCursor =>
+          runGitHubGraphqlWithRetry<{
+            repository?: {
+              pullRequest?: {
+                assignees?: GhConnection<GhAssignee> | null;
+              } | null;
+            } | null;
+          }>(GRAPHQL_PR_ASSIGNEES_PAGE_QUERY, {
+            owner,
+            repo,
+            number,
+            endCursor,
+          }),
+        response => response.repository?.pullRequest?.assignees
+      ),
+    ]);
+
+  return {
+    ...raw,
+    labels,
+    reviews,
+    comments,
+    statusCheckRollup,
+    reviewRequests,
+    assignees,
   };
 }
 
@@ -1398,16 +1844,26 @@ export async function fetchPrDetail(
   number: number
 ): Promise<PullRequest> {
   const nameWithOwner = `${owner}/${repo}`;
-  const json = await runGh([
-    'pr',
-    'view',
-    String(number),
-    `--repo=${nameWithOwner}`,
-    `--json=${DETAIL_FIELDS}`,
-  ]);
+  const response = await runGitHubGraphqlWithRetry<{
+    repository?: {
+      pullRequest?: GhGraphqlDetailPr | null;
+    } | null;
+  }>(GRAPHQL_PR_DETAIL_QUERY, {
+    owner,
+    repo,
+    number,
+  });
 
-  const raw = JSON.parse(json) as GhPrDetail;
-  return buildPrFromDetail(raw, nameWithOwner);
+  const raw = response.repository?.pullRequest;
+  if (!raw) {
+    throw new Error(`Pull request ${nameWithOwner}#${number} was not found.`);
+  }
+
+  const detail = isGraphqlDetailPrTruncated(raw)
+    ? await hydrateTruncatedDetailPr(owner, repo, number, raw)
+    : flattenGraphqlDetailPr(raw);
+
+  return buildPrFromDetail(detail, nameWithOwner);
 }
 
 /**
@@ -1613,6 +2069,7 @@ export const _internal = {
   findDetailRepos,
   buildAuthoredOpenSearchQuery,
   connectionHasNextPage,
+  collectConnectionNodes,
   isGraphqlDetailPrTruncated,
   mergeKnownIntoCurrent,
   isTransientGhFailure,

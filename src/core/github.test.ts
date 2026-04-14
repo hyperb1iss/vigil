@@ -22,6 +22,7 @@ const {
   findDetailRepos,
   buildAuthoredOpenSearchQuery,
   connectionHasNextPage,
+  collectConnectionNodes,
   formatGhArgsForError,
   isGraphqlDetailPrTruncated,
   isTransientGhFailure,
@@ -437,6 +438,61 @@ describe('connectionHasNextPage', () => {
         },
       })
     ).toBe(false);
+  });
+});
+
+describe('collectConnectionNodes', () => {
+  test('returns the initial nodes when the connection is already complete', async () => {
+    const result = await collectConnectionNodes(
+      {
+        nodes: [1, null, 2],
+        pageInfo: {
+          hasNextPage: false,
+        },
+      },
+      async () => {
+        throw new Error('should not fetch another page');
+      },
+      response => response
+    );
+
+    expect(result).toEqual([1, 2]);
+  });
+
+  test('follows cursors until the connection is exhausted', async () => {
+    const cursors: string[] = [];
+    const result = await collectConnectionNodes(
+      {
+        nodes: [1],
+        pageInfo: {
+          hasNextPage: true,
+          endCursor: 'cursor-1',
+        },
+      },
+      async cursor => {
+        cursors.push(cursor);
+        if (cursor === 'cursor-1') {
+          return {
+            nodes: [2],
+            pageInfo: {
+              hasNextPage: true,
+              endCursor: 'cursor-2',
+            },
+          };
+        }
+
+        return {
+          nodes: [3, null],
+          pageInfo: {
+            hasNextPage: false,
+          },
+        };
+      },
+      response => response
+    );
+
+    expect(result).toEqual([1, 2, 3]);
+    expect(cursors).toEqual(['cursor-1', 'cursor-2']);
   });
 });
 

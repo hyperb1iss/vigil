@@ -14,7 +14,8 @@ import type {
   ReviewState,
 } from '../types/index.js';
 import type { RadarConfig, RadarPr, RadarRepoConfig, RelevanceReason } from '../types/radar.js';
-import { fetchPrDetail, runGhWithRetry } from './github.js';
+import { fetchPrDetail } from './github.js';
+import { getGitHubViewerLogin, runGitHubGraphqlWithRetry } from './github-client.js';
 import { classifyRelevance, topTier } from './radar-classifier.js';
 
 interface GhAuthor {
@@ -173,27 +174,44 @@ interface GhGraphqlRadarPr {
 }
 
 interface GhGraphqlRepoPage {
-  data?: {
-    repository?: {
-      pullRequests?: GhConnection<GhGraphqlRadarPr> | null;
-    } | null;
+  repository?: {
+    pullRequests?: GhConnection<GhGraphqlRadarPr> | null;
   } | null;
 }
 
 interface GhGraphqlSearchPage<TNode> {
-  data?: {
-    search?: GhConnection<TNode> | null;
-  } | null;
+  search?: GhConnection<TNode> | null;
 }
 
 interface GhPrFilesResponse {
-  files?: Array<GhPrFile | null> | null;
+  repository?: {
+    pullRequest?: {
+      files?: GhConnection<GhPrFile> | null;
+    } | null;
+  } | null;
 }
 
 const RADAR_RETRY_ATTEMPTS = 2;
 const RADAR_GH_TIMEOUT_MS = 12_000;
 const RADAR_GRAPHQL_SEARCH_CEILING = 1000;
 const DIRECT_REVIEW_DETAIL_CONCURRENCY = 6;
+const PR_FILES_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        files(first: 100, after: $endCursor) {
+          nodes {
+            path
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  }
+`;
 
 const DIRECT_REVIEW_SEARCH_QUERY = `
   query($searchQuery: String!, $endCursor: String) {
@@ -417,8 +435,6 @@ const RADAR_MERGED_QUERY = `
     }
   }
 `;
-
-let viewerLoginCache: string | null = null;
 
 function normalizeAuthor(raw?: GhAuthor): PrAuthor {
   const login = raw?.login ?? 'unknown';
@@ -743,15 +759,40 @@ function isGraphqlRadarPrFilesTruncated(raw: GhGraphqlRadarPr): boolean {
 }
 
 async function fetchPrFiles(repo: string, number: number): Promise<string[]> {
-  const json = await runGhWithRetry(
-    ['pr', 'view', String(number), `--repo=${repo}`, '--json=files'],
-    RADAR_RETRY_ATTEMPTS,
-    RADAR_GH_TIMEOUT_MS
-  );
-  const raw = JSON.parse(json) as GhPrFilesResponse;
-  return flattenConnectionNodes(raw.files).flatMap(file =>
-    typeof file.path === 'string' && file.path.length > 0 ? [file.path] : []
-  );
+  const { owner, name } = splitRepo(repo);
+  const paths: string[] = [];
+  let endCursor: string | undefined;
+
+  for (;;) {
+    const response = await runGitHubGraphqlWithRetry<GhPrFilesResponse>(
+      PR_FILES_QUERY,
+      {
+        owner,
+        repo: name,
+        number,
+        endCursor,
+      },
+      {
+        attempts: RADAR_RETRY_ATTEMPTS,
+        timeoutMs: RADAR_GH_TIMEOUT_MS,
+      }
+    );
+    const connection = response.repository?.pullRequest?.files;
+    paths.push(
+      ...flattenConnectionNodes(connection?.nodes).flatMap(file =>
+        typeof file.path === 'string' && file.path.length > 0 ? [file.path] : []
+      )
+    );
+
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+
+    endCursor = nextCursor;
+  }
+
+  return paths;
 }
 
 async function fetchRepoOpenPrs(repo: string): Promise<GhGraphqlRadarPr[]> {
@@ -768,14 +809,7 @@ async function fetchRepoMergedPrs(repo: string, maxAgeMs: number): Promise<GhGra
 }
 
 export async function getViewerLogin(): Promise<string> {
-  if (viewerLoginCache) return viewerLoginCache;
-  const login = await runGhWithRetry(
-    ['api', 'user', '--jq', '.login'],
-    RADAR_RETRY_ATTEMPTS,
-    RADAR_GH_TIMEOUT_MS
-  );
-  viewerLoginCache = login.trim();
-  return viewerLoginCache;
+  return getGitHubViewerLogin();
 }
 
 export interface RadarFetchResult {
@@ -860,23 +894,33 @@ async function runWithConcurrency<T>(
 }
 
 async function runRadarGraphqlSearch<TNode>(query: string, searchQuery: string): Promise<TNode[]> {
-  const pages = await runRadarGraphqlPages<GhGraphqlSearchPage<TNode>>(query, { searchQuery });
-  return pages.flatMap(page => flattenConnectionNodes(page.data?.search?.nodes));
-}
+  const results: TNode[] = [];
+  let endCursor: string | undefined;
 
-async function runRadarGraphqlPages<TPage>(
-  query: string,
-  variables: Record<string, string | undefined> = {}
-): Promise<TPage[]> {
-  const args = ['api', 'graphql', '--paginate', '--slurp', '-f', `query=${query}`];
+  for (;;) {
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlSearchPage<TNode>>(
+      query,
+      {
+        searchQuery,
+        endCursor,
+      },
+      {
+        attempts: RADAR_RETRY_ATTEMPTS,
+        timeoutMs: RADAR_GH_TIMEOUT_MS,
+      }
+    );
+    const connection = page.search;
+    results.push(...flattenConnectionNodes(connection?.nodes));
 
-  for (const [key, value] of Object.entries(variables)) {
-    if (value === undefined) continue;
-    args.push('-f', `${key}=${value}`);
+    const nextCursor = connection?.pageInfo?.endCursor;
+    if (!connection?.pageInfo?.hasNextPage || !nextCursor) {
+      break;
+    }
+
+    endCursor = nextCursor;
   }
 
-  const json = await runGhWithRetry(args, RADAR_RETRY_ATTEMPTS, RADAR_GH_TIMEOUT_MS);
-  return JSON.parse(json) as TPage[];
+  return results;
 }
 
 const warnedSearchCeilings = new Set<string>();
@@ -935,23 +979,19 @@ async function runRepoPullRequestQuery(
   let endCursor: string | undefined;
 
   for (;;) {
-    const args = [
-      'api',
-      'graphql',
-      '-f',
-      `query=${query}`,
-      '-F',
-      `owner=${owner}`,
-      '-F',
-      `repo=${name}`,
-    ];
-    if (endCursor) {
-      args.push('-F', `endCursor=${endCursor}`);
-    }
-
-    const json = await runGhWithRetry(args, RADAR_RETRY_ATTEMPTS, RADAR_GH_TIMEOUT_MS);
-    const page = JSON.parse(json) as GhGraphqlRepoPage;
-    const connection = page.data?.repository?.pullRequests;
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlRepoPage>(
+      query,
+      {
+        owner,
+        repo: name,
+        endCursor,
+      },
+      {
+        attempts: RADAR_RETRY_ATTEMPTS,
+        timeoutMs: RADAR_GH_TIMEOUT_MS,
+      }
+    );
+    const connection = page.repository?.pullRequests;
     const pageNodes = flattenConnectionNodes(connection?.nodes);
     results.push(...pageNodes);
     if (stopAfterPage?.(pageNodes)) {
