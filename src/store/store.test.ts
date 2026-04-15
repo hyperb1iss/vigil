@@ -338,6 +338,8 @@ describe('UiSlice', () => {
     expect(state.sortMode).toBe('activity');
     expect(state.dashboardFeedMode).toBe('mine');
     expect(state.focusedPr).toBeNull();
+    expect(state.detailFocus).toBe('navigator');
+    expect(state.detailSelection).toBe(0);
     expect(state.selectedAction).toBe(0);
     expect(state.searchQuery).toBeNull();
     expect(state.notifications).toHaveLength(0);
@@ -376,11 +378,51 @@ describe('UiSlice', () => {
     expect(store.getState().focusedPr).toBe('owner/repo#42');
   });
 
+  test('setFocusedPr resets detail interaction state', () => {
+    const store = createTestStore();
+    store.getState().setDetailFocus('inspector');
+    store.getState().setDetailSelection(3);
+    store.getState().scrollView('detail', 9, 100);
+
+    store.getState().setFocusedPr('owner/repo#42');
+
+    expect(store.getState().detailFocus).toBe('navigator');
+    expect(store.getState().detailSelection).toBe(0);
+    expect(store.getState().scrollOffsets.detail).toBe(0);
+  });
+
   test('setFocusedPr can be cleared with null', () => {
     const store = createTestStore();
     store.getState().setFocusedPr('owner/repo#42');
     store.getState().setFocusedPr(null);
     expect(store.getState().focusedPr).toBeNull();
+  });
+
+  test('detail focus can be updated and cycled', () => {
+    const store = createTestStore();
+    store.getState().setDetailFocus('inspector');
+    expect(store.getState().detailFocus).toBe('inspector');
+
+    store.getState().cycleDetailFocus();
+    expect(store.getState().detailFocus).toBe('navigator');
+
+    store.getState().cycleDetailFocus(true);
+    expect(store.getState().detailFocus).toBe('inspector');
+  });
+
+  test('detail selection resets inspector scroll and clamps movement', () => {
+    const store = createTestStore();
+    store.getState().scrollView('detail', 4, 100);
+    store.getState().setDetailSelection(2);
+
+    expect(store.getState().detailSelection).toBe(2);
+    expect(store.getState().scrollOffsets.detail).toBe(0);
+
+    store.getState().moveDetailSelection(10, 4);
+    expect(store.getState().detailSelection).toBe(3);
+
+    store.getState().moveDetailSelection(-99, 4);
+    expect(store.getState().detailSelection).toBe(0);
   });
 
   test('setMode toggles between hitl and yolo', () => {

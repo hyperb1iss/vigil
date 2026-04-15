@@ -33,7 +33,7 @@ function ActionRow({
         ? icons.cross
         : action.status === 'executed'
           ? icons.dot
-          : '\u25CB';
+          : '\uF10C';
 
   const statusColor =
     action.status === 'approved'
@@ -178,7 +178,7 @@ function HitlPanel(): JSX.Element {
       >
         <Box gap={1}>
           <Text color={palette.electricPurple} bold>
-            {icons.bolt} Proposed Actions
+            {icons.shield} Proposed Actions
           </Text>
           <Text color={semantic.muted}>({pending.length} pending)</Text>
         </Box>
@@ -252,7 +252,7 @@ function YoloLog(): JSX.Element {
       >
         <Box gap={1}>
           <Text color={palette.neonCyan} bold>
-            {icons.bolt} Activity Log
+            {icons.rocket} Activity Log
           </Text>
           <Text color={semantic.muted}>
             (YOLO {icons.middleDot} {actionHistory.length} total)

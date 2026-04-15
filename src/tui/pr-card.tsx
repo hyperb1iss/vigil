@@ -162,18 +162,18 @@ function sourceBadge(
   if (source === 'incoming' && radar) {
     switch (radar.topTier) {
       case 'direct':
-        return { text: 'DIRECT', color: semantic.error };
+        return { text: `${icons.eye} DIRECT`, color: semantic.error };
       case 'domain':
-        return { text: 'DOMAIN', color: semantic.warning };
+        return { text: `${icons.code} DOMAIN`, color: semantic.warning };
       case 'watch':
-        return { text: 'WATCH', color: palette.electricPurple };
+        return { text: `${icons.telescope} WATCH`, color: palette.electricPurple };
     }
   }
   if (source === 'merged') {
-    return { text: 'MERGED', color: semantic.success };
+    return { text: `${icons.merge} MERGED`, color: semantic.success };
   }
   if (source === 'mine') {
-    return { text: 'MINE', color: palette.neonCyan };
+    return { text: `${icons.user} MINE`, color: palette.neonCyan };
   }
   return null;
 }

@@ -10,6 +10,7 @@ import type {
 } from '../types/index.js';
 import {
   checkIndicators,
+  icons,
   palette,
   prStateColors,
   semantic,
@@ -149,12 +150,13 @@ function getSourceBadge(
   source: PrRowProps['source'],
   radar: PrRowProps['radar']
 ): SourceBadge | null {
-  if (source === 'mine') return { text: 'MINE', color: palette.neonCyan };
-  if (source === 'merged') return { text: 'MERGED', color: semantic.success };
+  if (source === 'mine') return { text: `${icons.user} MINE`, color: palette.neonCyan };
+  if (source === 'merged') return { text: `${icons.merge} MERGED`, color: semantic.success };
   if (source === 'incoming') {
-    if (radar?.topTier === 'direct') return { text: 'DIRECT', color: semantic.error };
-    if (radar?.topTier === 'domain') return { text: 'DOMAIN', color: semantic.warning };
-    return { text: 'WATCH', color: palette.electricPurple };
+    if (radar?.topTier === 'direct') return { text: `${icons.eye} DIRECT`, color: semantic.error };
+    if (radar?.topTier === 'domain')
+      return { text: `${icons.code} DOMAIN`, color: semantic.warning };
+    return { text: `${icons.telescope} WATCH`, color: palette.electricPurple };
   }
   return null;
 }
@@ -178,19 +180,29 @@ function BranchMeta({ pr }: { pr: PullRequest }): JSX.Element | null {
 function FocusedSignals({ pr }: { pr: PullRequest }): JSX.Element {
   const signals: Array<{ key: string; text: string; color: string; bold?: boolean }> = [];
   if (pr.checks.some(c => c.conclusion === 'FAILURE')) {
-    signals.push({ key: 'ci', text: 'CI FAIL', color: semantic.error, bold: true });
+    signals.push({
+      key: 'ci',
+      text: `${icons.cross} CI FAIL`,
+      color: semantic.error,
+      bold: true,
+    });
   }
   if (pr.reviewDecision === 'CHANGES_REQUESTED') {
-    signals.push({ key: 'changes', text: 'CHANGES', color: palette.coral, bold: true });
+    signals.push({
+      key: 'changes',
+      text: `${icons.conflict} CHANGES`,
+      color: palette.coral,
+      bold: true,
+    });
   }
   if (pr.isDraft) {
-    signals.push({ key: 'draft', text: 'DRAFT', color: palette.electricPurple });
+    signals.push({ key: 'draft', text: `${icons.draft} DRAFT`, color: palette.electricPurple });
   }
   if (pr.mergeable === 'CONFLICTING') {
-    signals.push({ key: 'conflict', text: 'CONFLICT', color: semantic.error });
+    signals.push({ key: 'conflict', text: `${icons.conflict} CONFLICT`, color: semantic.error });
   }
   if (pr.mergeable === 'MERGEABLE') {
-    signals.push({ key: 'mergeable', text: 'MERGEABLE', color: semantic.success });
+    signals.push({ key: 'mergeable', text: `${icons.check} MERGEABLE`, color: semantic.success });
   }
 
   return (

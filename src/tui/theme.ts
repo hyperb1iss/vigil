@@ -35,11 +35,11 @@ export const prStateColors: Record<PrState, string> = {
 // ─── PR State → Indicator ──────────────────────────────────────────
 
 export const stateIndicators: Record<PrState, string> = {
-  hot: '\u{1F534}', // 🔴
-  waiting: '\u{1F7E1}', // 🟡
-  ready: '\u{1F7E2}', // 🟢
-  dormant: '\u26AB', // ⚫
-  blocked: '\u{1F7E3}', // 🟣
+  hot: '\uF06D', //  (nf-fa-fire)
+  waiting: '\uF017', //  (nf-fa-clock_o)
+  ready: '\uF058', //  (nf-fa-check_circle)
+  dormant: '\uF186', //  (nf-fa-moon_o)
+  blocked: '\uF05E', //  (nf-fa-ban)
 };
 
 // ─── PR State → Label ──────────────────────────────────────────────
@@ -77,10 +77,10 @@ export const semantic = {
 // ─── CI Check Indicators ────────────────────────────────────────────
 
 export const checkIndicators = {
-  passing: { symbol: '\u2714', color: palette.successGreen }, // ✔
-  failing: { symbol: '\u2718', color: palette.errorRed }, // ✘
-  pending: { symbol: '\u25CF', color: palette.electricYellow }, // ●
-  skipped: { symbol: '\u2500', color: palette.muted }, // ─
+  passing: { symbol: '\uF00C', color: palette.successGreen }, //  (nf-fa-check)
+  failing: { symbol: '\uF00D', color: palette.errorRed }, //  (nf-fa-times)
+  pending: { symbol: '\uF10C', color: palette.electricYellow }, //  (nf-fa-circle_o)
+  skipped: { symbol: '\uF068', color: palette.muted }, //  (nf-fa-minus)
 } as const;
 
 // ─── Progress Bar Characters ────────────────────────────────────────
@@ -97,25 +97,61 @@ export const progressChars = {
 // ─── UI Icons ───────────────────────────────────────────────────────
 
 export const icons = {
-  branch: '\uE0A0', //  (Powerline branch)
-  pr: '\u2387', // ⎇
-  folder: '\uF07B', //
-  arrow: '\u2192', // →
-  arrowLeft: '\u2190', // ←
+  // Git
+  branch: '\uE0A0', //  (pl-branch)
+  pr: '\uF407', //  (nf-oct-git_pull_request)
+  merge: '\uE727', //  (nf-dev-git_merge)
+
+  // Navigation
+  arrow: '\uF054', //  (nf-fa-chevron_right)
+  arrowLeft: '\uF053', //  (nf-fa-chevron_left)
+  arrowUp: '\uF077', //  (nf-fa-chevron_up)
+  arrowDown: '\uF078', //  (nf-fa-chevron_down)
+
+  // Punctuation
   dot: '\u2022', // •
   middleDot: '\u00B7', // ·
   ellipsis: '\u2026', // …
-  bolt: '\u26A1', // ⚡
-  eye: '\uF06E', //
-  refresh: '\u21BB', // ↻
-  check: '\u2714', // ✔
-  cross: '\u2718', // ✘
-  merge: '\uE727', //
-  draft: '\uF040', //
-  conflict: '\u26A0', // ⚠
-  comment: '\uF075', //
+
+  // Status
+  bolt: '\uF0E7', //  (nf-fa-bolt)
+  check: '\uF00C', //  (nf-fa-check)
+  cross: '\uF00D', //  (nf-fa-times)
+  conflict: '\uF071', //  (nf-fa-warning)
+  shield: '\uF132', //  (nf-fa-shield)
+
+  // Objects
+  eye: '\uF06E', //  (nf-fa-eye)
+  folder: '\uF07B', //  (nf-fa-folder)
+  comment: '\uF075', //  (nf-fa-comment)
+  draft: '\uF040', //  (nf-fa-pencil)
+  tag: '\uF02B', //  (nf-fa-tag)
+  code: '\uF121', //  (nf-fa-code)
+
+  // Actions
+  search: '\uF002', //  (nf-fa-search)
+  refresh: '\uF021', //  (nf-fa-refresh)
   plus: '+',
   minus: '\u2212', // −
+
+  // Views & modes
+  grid: '\uF009', //  (nf-fa-th_large)
+  list: '\uF00B', //  (nf-fa-th_list)
+  sort: '\uF0DC', //  (nf-fa-sort)
+  dashboard: '\uF0E4', //  (nf-fa-tachometer)
+
+  // Agents & activity
+  cogs: '\uF085', //  (nf-fa-cogs)
+  pulse: '\uF21E', //  (nf-fa-heartbeat)
+  rocket: '\uF135', //  (nf-fa-rocket)
+
+  // People & services
+  user: '\uF007', //  (nf-fa-user)
+  telescope: '\uF519', //  (nf-oct-telescope)
+
+  // Sections
+  compass: '\uF14E', //  (nf-fa-compass)
+  terminal: '\uF120', //  (nf-fa-terminal)
 } as const;
 
 // ─── Divider ────────────────────────────────────────────────────────

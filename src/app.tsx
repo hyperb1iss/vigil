@@ -14,7 +14,12 @@ import { ActivityPanel } from './tui/activity-panel.js';
 import { Dashboard } from './tui/dashboard.js';
 import { buildDashboardItems } from './tui/dashboard-feed.js';
 import { HelpOverlay } from './tui/help-overlay.js';
-import { PrDetail, useDetailLineCount } from './tui/pr-detail.js';
+import {
+  buildDetailItems,
+  findRelativeReviewItemIndex,
+  PrDetail,
+  useDetailLineCount,
+} from './tui/pr-detail.js';
 import { icons, palette, semantic } from './tui/theme.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
@@ -128,8 +133,15 @@ export function App(): JSX.Element {
   const viewMode = useStore(vigilStore, s => s.viewMode);
   const setViewMode = useStore(vigilStore, s => s.setViewMode);
   const scrollView = useStore(vigilStore, s => s.scrollView);
+  const resetScroll = useStore(vigilStore, s => s.resetScroll);
   const focusedPr = useStore(vigilStore, s => s.focusedPr);
   const setFocusedPr = useStore(vigilStore, s => s.setFocusedPr);
+  const detailFocus = useStore(vigilStore, s => s.detailFocus);
+  const cycleDetailFocus = useStore(vigilStore, s => s.cycleDetailFocus);
+  const detailSelection = useStore(vigilStore, s => s.detailSelection);
+  const setDetailFocus = useStore(vigilStore, s => s.setDetailFocus);
+  const setDetailSelection = useStore(vigilStore, s => s.setDetailSelection);
+  const moveDetailSelection = useStore(vigilStore, s => s.moveDetailSelection);
   const cycleDashboardFeedMode = useStore(vigilStore, s => s.cycleDashboardFeedMode);
   const sortMode = useStore(vigilStore, s => s.sortMode);
   const setSortMode = useStore(vigilStore, s => s.setSortMode);
@@ -352,30 +364,109 @@ export function App(): JSX.Element {
   }
 
   /** Handle keys in detail view. */
-  function onDetailKey(
+  function onDetailReviewJump(
     input: string,
-    key: { tab: boolean; shift: boolean; upArrow: boolean; downArrow: boolean }
-  ): void {
-    if (key.tab) {
-      scrollView('detail', key.shift ? -5 : 5, detailLineCount);
-      return;
+    key: { leftArrow: boolean; rightArrow: boolean }
+  ): boolean {
+    const detailPr = getFocusedPr(focusedPr);
+    const detailItems = detailPr ? buildDetailItems(detailPr) : [];
+    if (detailItems.length === 0) return false;
+
+    if (input === 'h' || key.leftArrow) {
+      setDetailSelection(findRelativeReviewItemIndex(detailItems, detailSelection, -1));
+      return true;
     }
+    if (input === 'l' || key.rightArrow) {
+      setDetailSelection(findRelativeReviewItemIndex(detailItems, detailSelection, 1));
+      return true;
+    }
+
+    return false;
+  }
+
+  function onDetailNavigatorKey(
+    input: string,
+    key: { upArrow: boolean; downArrow: boolean; return: boolean }
+  ): boolean {
+    const detailPr = getFocusedPr(focusedPr);
+    const detailItems = detailPr ? buildDetailItems(detailPr) : [];
+
+    if (input === 'k' || key.upArrow) {
+      moveDetailSelection(-1, detailItems.length);
+      return true;
+    }
+    if (input === 'j' || key.downArrow) {
+      moveDetailSelection(1, detailItems.length);
+      return true;
+    }
+    if (input === 'g') {
+      setDetailSelection(0);
+      return true;
+    }
+    if (input === 'G') {
+      setDetailSelection(Math.max(0, detailItems.length - 1));
+      return true;
+    }
+    if (key.return) {
+      setDetailFocus('inspector');
+      resetScroll('detail');
+      return true;
+    }
+
+    return false;
+  }
+
+  function onDetailInspectorKey(
+    input: string,
+    key: { upArrow: boolean; downArrow: boolean }
+  ): boolean {
     if (input === 'k' || key.upArrow) {
       scrollView('detail', -1, detailLineCount);
-      return;
+      return true;
     }
     if (input === 'j' || key.downArrow) {
       scrollView('detail', 1, detailLineCount);
-      return;
+      return true;
     }
     if (input === 'g') {
       onJump(false);
-      return;
+      return true;
     }
     if (input === 'G') {
       onJump(true);
+      return true;
+    }
+
+    return false;
+  }
+
+  function onDetailKey(
+    input: string,
+    key: {
+      tab: boolean;
+      shift: boolean;
+      upArrow: boolean;
+      downArrow: boolean;
+      leftArrow: boolean;
+      rightArrow: boolean;
+      return: boolean;
+    }
+  ): void {
+    if (key.tab) {
+      cycleDetailFocus(key.shift);
       return;
     }
+
+    if (onDetailReviewJump(input, key)) {
+      return;
+    }
+
+    if (detailFocus === 'navigator') {
+      if (onDetailNavigatorKey(input, key)) return;
+    } else if (onDetailInspectorKey(input, key)) {
+      return;
+    }
+
     if (input === 'a') {
       setView('action');
     }
@@ -448,15 +539,11 @@ export function App(): JSX.Element {
 
       if (event.button !== 0 || event.isRelease) return;
 
-      if (view === 'detail') {
-        const prUrl = getFocusedPr(focusedPr)?.url;
-        if (prUrl) openInBrowser(prUrl);
-        return;
-      }
+      if (view === 'detail') return;
 
       if (view === 'dashboard') onDashboardClick(event);
     },
-    [view, focusedPr, onMouseScroll, onDashboardClick]
+    [view, onMouseScroll, onDashboardClick]
   );
 
   useMouse(handleMouse);

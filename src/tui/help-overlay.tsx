@@ -1,12 +1,13 @@
 import { Box, Text, useStdout } from 'ink';
 import type { JSX } from 'react';
 
-import { palette, semantic } from './theme.js';
+import { icons, palette, semantic } from './theme.js';
 
 // ─── Keybinding Data ──────────────────────────────────────────────
 
 interface KeyGroup {
   title: string;
+  icon: string;
   color: string;
   binds: Array<{ key: string; desc: string }>;
 }
@@ -14,6 +15,7 @@ interface KeyGroup {
 const HELP_GROUPS: KeyGroup[] = [
   {
     title: 'Navigation',
+    icon: icons.compass,
     color: palette.neonCyan,
     binds: [
       { key: '↑ / ↓', desc: 'Move up / down' },
@@ -28,6 +30,7 @@ const HELP_GROUPS: KeyGroup[] = [
   },
   {
     title: 'Search & Filter',
+    icon: icons.search,
     color: palette.electricPurple,
     binds: [
       { key: '/', desc: 'Start search (fuzzy)' },
@@ -37,6 +40,7 @@ const HELP_GROUPS: KeyGroup[] = [
   },
   {
     title: 'Views & Modes',
+    icon: icons.grid,
     color: palette.electricYellow,
     binds: [
       { key: 'v', desc: 'Toggle cards / list' },
@@ -49,18 +53,21 @@ const HELP_GROUPS: KeyGroup[] = [
   },
   {
     title: 'Detail View',
+    icon: icons.eye,
     color: palette.coral,
     binds: [
-      { key: '↑ / ↓', desc: 'Scroll content' },
-      { key: 'Tab', desc: 'Page down' },
-      { key: 'Shift+Tab', desc: 'Page up' },
-      { key: 'g / G', desc: 'Top / bottom' },
+      { key: 'Tab / Shift+Tab', desc: 'Switch navigator / inspector focus' },
+      { key: '↑ / ↓', desc: 'Move items or scroll inspector' },
+      { key: 'h / l', desc: 'Jump to previous / next review item' },
+      { key: 'Enter', desc: 'Inspect selected navigator item' },
+      { key: 'g / G', desc: 'Top / bottom of active pane' },
       { key: 'a', desc: 'Open action panel' },
       { key: 'o', desc: 'Open PR in browser' },
     ],
   },
   {
     title: 'Activity View',
+    icon: icons.pulse,
     color: palette.successGreen,
     binds: [
       { key: '↑ / ↓', desc: 'Scroll log lines' },
@@ -73,6 +80,7 @@ const HELP_GROUPS: KeyGroup[] = [
   },
   {
     title: 'Actions',
+    icon: icons.bolt,
     color: palette.successGreen,
     binds: [
       { key: '1-9', desc: 'Approve specific action' },
@@ -82,6 +90,7 @@ const HELP_GROUPS: KeyGroup[] = [
   },
   {
     title: 'Vim Motions',
+    icon: icons.terminal,
     color: semantic.dim,
     binds: [{ key: 'h j k l', desc: 'Navigate (same as arrows)' }],
   },
@@ -100,7 +109,7 @@ export function HelpOverlay(): JSX.Element {
       {/* Header */}
       <Box justifyContent="center" paddingY={1}>
         <Text color={palette.electricPurple} bold>
-          {'━━━ VIGIL KEYBINDINGS ━━━'}
+          {`━━━ ${icons.bolt} VIGIL KEYBINDINGS ━━━`}
         </Text>
       </Box>
 
@@ -109,8 +118,7 @@ export function HelpOverlay(): JSX.Element {
         <Box key={group.title} flexDirection="column" paddingBottom={1}>
           <Box paddingX={1}>
             <Text color={group.color} bold>
-              {'▸ '}
-              {group.title}
+              {group.icon} {group.title}
             </Text>
           </Box>
           {group.binds.map(bind => (

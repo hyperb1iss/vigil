@@ -3,7 +3,13 @@ import { describe, expect, test } from 'bun:test';
 import type { PullRequest } from '../types/pr.js';
 import { _internal } from './pr-detail.js';
 
-const { detectAutomatedReviewVendor, partitionReviewFeedback, isBotNoise } = _internal;
+const {
+  detectAutomatedReviewVendor,
+  partitionReviewFeedback,
+  isBotNoise,
+  buildDetailItems,
+  findRelativeReviewItemIndex,
+} = _internal;
 
 function makePr(key = 'owner/repo#1', overrides: Partial<PullRequest> = {}): PullRequest {
   return {
@@ -131,5 +137,106 @@ describe('partitionReviewFeedback', () => {
       'review:r-codex',
     ]);
     expect(feedback.automatedItems.map(item => item.vendor.id)).toEqual(['coderabbit', 'codex']);
+  });
+});
+
+describe('buildDetailItems', () => {
+  test('builds a navigator model with overview first and reviewables grouped after', () => {
+    const pr = makePr('owner/repo#77', {
+      body: 'Summary body',
+      reviewDecision: 'CHANGES_REQUESTED',
+      reviewRequests: [{ login: 'team-reviewer' }],
+      labels: [{ id: 'l1', name: 'needs-fix', color: 'ff0000' }],
+      reviews: [
+        {
+          id: 'r-human',
+          author: { login: 'alice', isBot: false },
+          state: 'CHANGES_REQUESTED',
+          body: 'Fix the edge case.',
+          submittedAt: '2026-04-15T10:00:00.000Z',
+        },
+      ],
+      comments: [
+        {
+          id: 'c-codex',
+          author: { login: 'openai-codex', isBot: true },
+          body: 'Codex review: tighten the null handling.',
+          createdAt: '2026-04-15T12:00:00.000Z',
+          url: 'https://github.com/owner/repo/pull/77#issuecomment-2',
+        },
+        {
+          id: 'c-human',
+          author: { login: 'bob', isBot: false },
+          body: 'Please rename this helper.',
+          createdAt: '2026-04-15T13:00:00.000Z',
+          url: 'https://github.com/owner/repo/pull/77#issuecomment-3',
+        },
+      ],
+      checks: [
+        {
+          name: 'build',
+          status: 'COMPLETED',
+          conclusion: 'FAILURE',
+          workflowName: 'CI',
+        },
+      ],
+    });
+
+    const items = buildDetailItems(pr);
+
+    expect(items.map(item => item.kind)).toEqual([
+      'overview',
+      'agent',
+      'review',
+      'comment',
+      'check',
+    ]);
+    expect(items[0]).toMatchObject({
+      key: 'overview',
+      title: 'PR Snapshot',
+      subtitle: 'changes requested',
+    });
+    expect(items[1]).toMatchObject({
+      key: 'comment:c-codex',
+      kind: 'agent',
+      title: 'CODEX comment',
+    });
+    expect(items[2]).toMatchObject({
+      key: 'review:r-human',
+      kind: 'review',
+      title: 'alice',
+    });
+  });
+});
+
+describe('findRelativeReviewItemIndex', () => {
+  test('jumps between review items without stopping on overview or comments', () => {
+    const items = buildDetailItems(
+      makePr('owner/repo#88', {
+        reviews: [
+          {
+            id: 'r-human',
+            author: { login: 'alice', isBot: false },
+            state: 'COMMENTED',
+            body: 'First review.',
+            submittedAt: '2026-04-15T10:00:00.000Z',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-human',
+            author: { login: 'bob', isBot: false },
+            body: 'Plain comment.',
+            createdAt: '2026-04-15T11:00:00.000Z',
+            url: 'https://github.com/owner/repo/pull/88#issuecomment-1',
+          },
+        ],
+        checks: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      })
+    );
+
+    expect(findRelativeReviewItemIndex(items, 0, 1)).toBe(1);
+    expect(findRelativeReviewItemIndex(items, 1, 1)).toBe(1);
+    expect(findRelativeReviewItemIndex(items, items.length - 1, -1)).toBe(1);
   });
 });

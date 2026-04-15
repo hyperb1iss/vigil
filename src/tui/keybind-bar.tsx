@@ -28,8 +28,10 @@ const DASHBOARD_BINDS: Keybind[] = [
 
 const DETAIL_BINDS: Keybind[] = [
   { key: 'Esc', label: 'back' },
-  { key: '↑↓', label: 'scroll' },
-  { key: 'Tab', label: 'page' },
+  { key: 'Tab', label: 'pane' },
+  { key: '↑↓', label: 'move/scroll', abbr: 'move' },
+  { key: 'h/l', label: 'review' },
+  { key: '↵', label: 'inspect', abbr: 'insp' },
   { key: 'a', label: 'actions' },
   { key: 'x', label: 'activity', abbr: 'act' },
   { key: 'o', label: 'open' },

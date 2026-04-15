@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
 import type { JSX } from 'react';
 
-import { palette, semantic } from './theme.js';
+import { icons, palette, semantic } from './theme.js';
 
 interface SearchBarProps {
   query: string;
@@ -13,7 +13,7 @@ export function SearchBar({ query, matchCount, totalCount }: SearchBarProps): JS
   return (
     <Box paddingX={1} gap={1}>
       <Text color={palette.electricPurple} bold>
-        /
+        {icons.search}
       </Text>
       <Text color={palette.fg}>{query}</Text>
       <Text color={palette.neonCyan}>{'█'}</Text>

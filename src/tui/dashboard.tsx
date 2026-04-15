@@ -86,7 +86,9 @@ function EmptyState({ fill = false }: { fill?: boolean } = {}): JSX.Element {
       <Text> </Text>
 
       <Text color={semantic.muted}>
-        {pollError ? 'GitHub polling needs attention' : 'Watching your pull requests'}
+        {pollError
+          ? `${icons.conflict} GitHub polling needs attention`
+          : `${icons.telescope} Watching your pull requests`}
       </Text>
 
       <Text> </Text>

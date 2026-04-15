@@ -7,6 +7,7 @@ import type { DashboardFeedMode, RadarFilter, RadarPr } from './radar.js';
 export type ViewName = 'dashboard' | 'detail' | 'action' | 'activity';
 export type ViewMode = 'cards' | 'list';
 export type SortMode = 'activity' | 'state';
+export type DetailFocus = 'navigator' | 'inspector';
 
 export interface Notification {
   id: string;
@@ -44,6 +45,8 @@ export interface VigilStore {
   sortMode: SortMode;
   dashboardFeedMode: DashboardFeedMode;
   focusedPr: string | null;
+  detailFocus: DetailFocus;
+  detailSelection: number;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
   searchQuery: string | null; // null = inactive, string = active filter
@@ -82,6 +85,10 @@ export interface VigilStore {
   setDashboardFeedMode: (mode: DashboardFeedMode) => void;
   cycleDashboardFeedMode: () => void;
   setFocusedPr: (key: string | null) => void;
+  setDetailFocus: (focus: DetailFocus) => void;
+  cycleDetailFocus: (reverse?: boolean) => void;
+  setDetailSelection: (index: number) => void;
+  moveDetailSelection: (delta: number, max: number) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   setConfig: (config: VigilConfig) => void;
   setSearchQuery: (query: string | null) => void;

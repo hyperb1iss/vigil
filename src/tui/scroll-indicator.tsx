@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
 import type { JSX } from 'react';
 
-import { palette, semantic } from './theme.js';
+import { icons, palette, semantic } from './theme.js';
 
 export function ScrollIndicator({
   current,
@@ -37,7 +37,11 @@ export function ScrollIndicator({
 
   return (
     <Box justifyContent="center" gap={2}>
-      {canUp ? <Text color={semantic.dim}>{'\u25B2'}</Text> : <Text color={semantic.dim}> </Text>}
+      {canUp ? (
+        <Text color={semantic.dim}>{icons.arrowUp}</Text>
+      ) : (
+        <Text color={semantic.dim}> </Text>
+      )}
       <Text>
         <Text color={isScrollable ? palette.electricPurple : semantic.dim}>{track.join('')}</Text>
       </Text>
@@ -45,7 +49,11 @@ export function ScrollIndicator({
         {`${Math.min(current + 1, total)}\u2013${Math.min(current + effectiveVisible, total)}`}{' '}
         <Text color={semantic.dim}>of</Text> {total}
       </Text>
-      {canDown ? <Text color={semantic.dim}>{'\u25BC'}</Text> : <Text color={semantic.dim}> </Text>}
+      {canDown ? (
+        <Text color={semantic.dim}>{icons.arrowDown}</Text>
+      ) : (
+        <Text color={semantic.dim}> </Text>
+      )}
     </Box>
   );
 }

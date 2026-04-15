@@ -24,7 +24,7 @@ export function AgentStatus(): JSX.Element {
     return (
       <Box paddingX={1}>
         <Text color={semantic.dim}>
-          {icons.bolt} agents {mode === 'yolo' ? 'auto' : 'standby'}
+          {icons.cogs} agents {mode === 'yolo' ? 'auto' : 'standby'}
         </Text>
       </Box>
     );
@@ -35,7 +35,7 @@ export function AgentStatus(): JSX.Element {
     return (
       <Box paddingX={1}>
         <Text color={semantic.dim}>
-          {icons.bolt} agents {mode === 'yolo' ? 'auto' : 'standby'}
+          {icons.cogs} agents {mode === 'yolo' ? 'auto' : 'standby'}
         </Text>
       </Box>
     );
@@ -47,7 +47,7 @@ export function AgentStatus(): JSX.Element {
     <Box paddingX={1}>
       <Text wrap="truncate-end">
         <Text color={palette.electricPurple} bold>
-          {icons.bolt} Agents
+          {icons.cogs} Agents
         </Text>
         <Text color={semantic.muted}> ({running.length} active)</Text>
         <Text color={semantic.dim}>{' · '}</Text>

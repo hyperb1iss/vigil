@@ -234,7 +234,7 @@ export function ActivityPanel(): JSX.Element {
       >
         <Box gap={1}>
           <Text color={palette.electricPurple} bold>
-            {icons.bolt} Agent Activity
+            {icons.cogs} Agent Activity
           </Text>
           <Text color={semantic.muted}>
             ({running.length} running · {filteredEntries.length}
@@ -248,7 +248,7 @@ export function ActivityPanel(): JSX.Element {
 
         <Box marginTop={1} flexDirection="column">
           {running.length === 0 ? (
-            <Text color={semantic.dim}>agents standby</Text>
+            <Text color={semantic.dim}>{icons.cogs} agents standby</Text>
           ) : (
             running.slice(0, 4).map(run => (
               <ActiveRunRow

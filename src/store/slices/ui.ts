@@ -3,7 +3,14 @@ import type { StateCreator } from 'zustand';
 import { defaultConfig } from '../../config/defaults.js';
 import type { VigilConfig } from '../../types/config.js';
 import type { DashboardFeedMode } from '../../types/radar.js';
-import type { Notification, SortMode, ViewMode, ViewName, VigilStore } from '../../types/store.js';
+import type {
+  DetailFocus,
+  Notification,
+  SortMode,
+  ViewMode,
+  ViewName,
+  VigilStore,
+} from '../../types/store.js';
 import { loadUiPreferences, saveUiPreferences } from '../ui-preferences.js';
 
 const defaultScrollOffsets: Record<ViewName, number> = {
@@ -20,6 +27,8 @@ export interface UiSlice {
   sortMode: SortMode;
   dashboardFeedMode: DashboardFeedMode;
   focusedPr: string | null;
+  detailFocus: DetailFocus;
+  detailSelection: number;
   selectedAction: number;
   scrollOffsets: Record<ViewName, number>;
   searchQuery: string | null;
@@ -32,6 +41,10 @@ export interface UiSlice {
   setDashboardFeedMode: (mode: DashboardFeedMode) => void;
   cycleDashboardFeedMode: () => void;
   setFocusedPr: (key: string | null) => void;
+  setDetailFocus: (focus: DetailFocus) => void;
+  cycleDetailFocus: (reverse?: boolean) => void;
+  setDetailSelection: (index: number) => void;
+  moveDetailSelection: (delta: number, max: number) => void;
   setMode: (mode: 'hitl' | 'yolo') => void;
   setConfig: (config: VigilConfig) => void;
   setSearchQuery: (query: string | null) => void;
@@ -49,6 +62,8 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
   sortMode: 'activity',
   dashboardFeedMode: defaultConfig.display.dashboardFeedMode,
   focusedPr: null,
+  detailFocus: 'navigator',
+  detailSelection: 0,
   selectedAction: 0,
   scrollOffsets: { ...defaultScrollOffsets },
   searchQuery: null,
@@ -118,7 +133,37 @@ export const createUiSlice: StateCreator<VigilStore, [], [], UiSlice> = set => (
       };
     }),
 
-  setFocusedPr: key => set({ focusedPr: key }),
+  setFocusedPr: key =>
+    set(prev => ({
+      focusedPr: key,
+      detailFocus: 'navigator',
+      detailSelection: 0,
+      scrollOffsets: { ...prev.scrollOffsets, detail: 0 },
+    })),
+
+  setDetailFocus: (focus: DetailFocus) => set({ detailFocus: focus }),
+
+  cycleDetailFocus: (_reverse = false) =>
+    set(prev => ({
+      detailFocus: prev.detailFocus === 'navigator' ? 'inspector' : 'navigator',
+    })),
+
+  setDetailSelection: (index: number) =>
+    set(prev => ({
+      detailSelection: Math.max(0, index),
+      scrollOffsets: { ...prev.scrollOffsets, detail: 0 },
+    })),
+
+  moveDetailSelection: (delta: number, max: number) =>
+    set(prev => {
+      const upperBound = Math.max(0, max - 1);
+      const next = Math.max(0, Math.min(upperBound, prev.detailSelection + delta));
+      return {
+        detailSelection: next,
+        scrollOffsets:
+          next === prev.detailSelection ? prev.scrollOffsets : { ...prev.scrollOffsets, detail: 0 },
+      };
+    }),
 
   setMode: mode => set({ mode }),
 

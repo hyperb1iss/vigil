@@ -80,9 +80,13 @@ export function StatusBar(): JSX.Element {
         <Text color={semantic.dim}>{' │ '}</Text>
 
         {/* View mode + sort */}
-        <Text color={semantic.muted}>{viewMode === 'cards' ? '▦ Cards' : '☰ List'}</Text>
+        <Text color={semantic.muted}>
+          {viewMode === 'cards' ? `${icons.grid} cards` : `${icons.list} list`}
+        </Text>
         <Text color={semantic.dim}>{' · '}</Text>
-        <Text color={semantic.muted}>{sortMode === 'activity' ? '↕ Activity' : '◆ State'}</Text>
+        <Text color={semantic.muted}>
+          {sortMode === 'activity' ? `${icons.pulse} activity` : `${icons.sort} state`}
+        </Text>
 
         <Text color={semantic.dim}>{' │ '}</Text>
 
