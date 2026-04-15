@@ -1393,6 +1393,62 @@ function computeWindowOffset(target: number, total: number, visible: number): nu
   return Math.max(0, Math.min(total - visible, centered));
 }
 
+function buildNavigatorRows(items: DetailItem[]): NavigatorRow[] {
+  const rows: NavigatorRow[] = [];
+  let previousKind: DetailItemKind | null = null;
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (!item) continue;
+
+    if (item.kind !== previousKind) {
+      rows.push({
+        key: `nav-section-${item.kind}`,
+        kind: 'section',
+        label: DETAIL_GROUP_LABELS[item.kind],
+      });
+      previousKind = item.kind;
+    }
+
+    rows.push({
+      key: `nav-item-${item.key}`,
+      kind: 'item',
+      label: item.title,
+      itemIndex: index,
+      item,
+    });
+  }
+
+  return rows;
+}
+
+function visibleNavigatorWindow(
+  items: DetailItem[],
+  height: number,
+  selectedIndex: number
+): { rows: NavigatorRow[]; offset: number } {
+  const rows = buildNavigatorRows(items);
+  const selectedLine = Math.max(
+    0,
+    rows.findIndex(row => row.kind === 'item' && row.itemIndex === selectedIndex)
+  );
+  const bodyVisible = Math.max(1, height - PANEL_CHROME_LINES);
+  const offset = computeWindowOffset(selectedLine, rows.length, bodyVisible);
+
+  return { rows, offset };
+}
+
+export function detailNavigatorItemIndexAtRow(
+  items: DetailItem[],
+  height: number,
+  selectedIndex: number,
+  bodyRow: number
+): number | null {
+  const { rows, offset } = visibleNavigatorWindow(items, height, selectedIndex);
+  const row = rows[offset + bodyRow];
+  return row?.kind === 'item' ? (row.itemIndex ?? null) : null;
+}
+
 function buildNavigatorBodyLines(
   items: DetailItem[],
   width: number,
@@ -1401,34 +1457,35 @@ function buildNavigatorBodyLines(
 ): { lines: ContentLine[]; selectedLine: number } {
   const lines: ContentLine[] = [];
   let selectedLine = 0;
-  let lineIndex = 0;
-  let previousKind: DetailItemKind | null = null;
+  const rows = buildNavigatorRows(items);
 
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (!item) continue;
+  for (let lineIndex = 0; lineIndex < rows.length; lineIndex += 1) {
+    const row = rows[lineIndex];
+    if (!row) continue;
 
-    if (item.kind !== previousKind) {
+    if (row.kind === 'section') {
       lines.push(
         cardRow(
-          `nav-section-${item.kind}`,
+          row.key,
           <Text color={semantic.dim} bold>
-            {DETAIL_GROUP_LABELS[item.kind]}
+            {row.label}
           </Text>,
           width,
           borderColor
         )
       );
-      lineIndex += 1;
-      previousKind = item.kind;
+      continue;
     }
 
-    const isSelected = index === selectedIndex;
+    const item = row.item;
+    if (!item) continue;
+
+    const isSelected = row.itemIndex === selectedIndex;
     if (isSelected) selectedLine = lineIndex;
 
     lines.push(
       spacedCardRow(
-        `nav-item-${item.key}`,
+        row.key,
         <Text wrap="truncate-end">
           <Text color={isSelected ? item.accent : semantic.dim}>{isSelected ? '▸ ' : '  '}</Text>
           <Text color={isSelected ? item.accent : semantic.muted}>{item.icon}</Text>
@@ -1450,7 +1507,6 @@ function buildNavigatorBodyLines(
         borderColor
       )
     );
-    lineIndex += 1;
   }
 
   return { lines, selectedLine };
@@ -1619,7 +1675,7 @@ interface DetailPanelLayout {
   inspectorHeight: number;
 }
 
-function resolveDetailPanelLayout(
+export function resolveDetailPanelLayout(
   contentWidth: number,
   availableHeight: number
 ): DetailPanelLayout {
@@ -1646,6 +1702,30 @@ function resolveDetailPanelLayout(
     inspectorWidth,
     navigatorHeight,
     inspectorHeight,
+  };
+}
+
+export function detailHeaderLineCount(pr: PullRequest, hasAgentActivity: boolean): number {
+  return 6 + (hasAgentActivity ? 1 : 0) + (pr.worktree ? 1 : 0);
+}
+
+export function measureDetailViewport(
+  pr: PullRequest,
+  contentWidth: number,
+  termRows: number,
+  hasAgentActivity: boolean
+): {
+  headerLineCount: number;
+  availableHeight: number;
+  layout: DetailPanelLayout;
+} {
+  const headerLineCount = detailHeaderLineCount(pr, hasAgentActivity);
+  const availableHeight = Math.max(1, termRows - headerLineCount - CHROME_LINES);
+
+  return {
+    headerLineCount,
+    availableHeight,
+    layout: resolveDetailPanelLayout(contentWidth, availableHeight),
   };
 }
 
@@ -1694,6 +1774,7 @@ export const _internal = {
   isBotNoise,
   buildDetailItems,
   findRelativeReviewItemIndex,
+  detailHeaderLineCount,
 };
 
 // ─── Hook: Line Count for Scroll Max ─────────────────────────────────
@@ -1811,8 +1892,8 @@ export function PrDetail(): JSX.Element | null {
     return <DetailPlaceholder message="No detail items available" />;
   }
 
-  const availableHeight = Math.max(1, termRows - headerLines.length - CHROME_LINES);
-  const layout = resolveDetailPanelLayout(contentWidth, availableHeight);
+  const viewport = measureDetailViewport(pr, contentWidth, termRows, Boolean(agentActivity));
+  const layout = viewport.layout;
 
   const navigatorLines = buildNavigatorPanelLines(
     detailItems,

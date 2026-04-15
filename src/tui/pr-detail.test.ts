@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { PullRequest } from '../types/pr.js';
-import { _internal } from './pr-detail.js';
+import { _internal, detailNavigatorItemIndexAtRow, measureDetailViewport } from './pr-detail.js';
 
 const {
   detectAutomatedReviewVendor,
@@ -238,5 +238,78 @@ describe('findRelativeReviewItemIndex', () => {
     expect(findRelativeReviewItemIndex(items, 0, 1)).toBe(1);
     expect(findRelativeReviewItemIndex(items, 1, 1)).toBe(1);
     expect(findRelativeReviewItemIndex(items, items.length - 1, -1)).toBe(1);
+  });
+});
+
+describe('detailNavigatorItemIndexAtRow', () => {
+  test('maps visible navigator rows back to the clicked detail item', () => {
+    const items = buildDetailItems(
+      makePr('owner/repo#91', {
+        reviews: [
+          {
+            id: 'r-human',
+            author: { login: 'alice', isBot: false },
+            state: 'CHANGES_REQUESTED',
+            body: 'Please fix this edge case.',
+            submittedAt: '2026-04-15T10:00:00.000Z',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-codex',
+            author: { login: 'openai-codex', isBot: true },
+            body: 'Codex review: handle the null branch.',
+            createdAt: '2026-04-15T11:00:00.000Z',
+            url: 'https://github.com/owner/repo/pull/91#issuecomment-1',
+          },
+        ],
+        checks: [{ name: 'build', status: 'COMPLETED', conclusion: 'FAILURE' }],
+      })
+    );
+
+    expect(detailNavigatorItemIndexAtRow(items, 6, 2, 0)).toBe(1);
+    expect(detailNavigatorItemIndexAtRow(items, 6, 2, 1)).toBeNull();
+    expect(detailNavigatorItemIndexAtRow(items, 6, 2, 2)).toBe(2);
+    expect(detailNavigatorItemIndexAtRow(items, 6, 2, 3)).toBeNull();
+  });
+});
+
+describe('measureDetailViewport', () => {
+  test('accounts for footer chrome and optional header rows', () => {
+    const basePr = makePr('owner/repo#92');
+    expect(measureDetailViewport(basePr, 100, 30, false)).toEqual({
+      headerLineCount: 6,
+      availableHeight: 20,
+      layout: {
+        isWide: false,
+        panelGap: 0,
+        navigatorWidth: 100,
+        inspectorWidth: 100,
+        navigatorHeight: 8,
+        inspectorHeight: 11,
+      },
+    });
+
+    const worktreePr = makePr('owner/repo#93', {
+      worktree: {
+        path: '/tmp/worktrees/repo',
+        branch: 'feat/mouse',
+        isClean: false,
+        uncommittedChanges: 3,
+      },
+    });
+
+    expect(measureDetailViewport(worktreePr, 120, 32, true)).toEqual({
+      headerLineCount: 8,
+      availableHeight: 20,
+      layout: {
+        isWide: true,
+        panelGap: 2,
+        navigatorWidth: 40,
+        inspectorWidth: 78,
+        navigatorHeight: 20,
+        inspectorHeight: 20,
+      },
+    });
   });
 });

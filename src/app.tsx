@@ -16,7 +16,9 @@ import { buildDashboardItems } from './tui/dashboard-feed.js';
 import { HelpOverlay } from './tui/help-overlay.js';
 import {
   buildDetailItems,
+  detailNavigatorItemIndexAtRow,
   findRelativeReviewItemIndex,
+  measureDetailViewport,
   PrDetail,
   useDetailLineCount,
 } from './tui/pr-detail.js';
@@ -49,6 +51,116 @@ function getFocusedPr(key: string | null): PullRequest | undefined {
   if (!key) return;
   const state = vigilStore.getState();
   return state.prs.get(key) ?? state.radarPrs.get(key)?.pr ?? state.mergedRadarPrs.get(key)?.pr;
+}
+
+interface DetailMouseTarget {
+  zone: 'breadcrumb' | 'navigator' | 'inspector' | 'gap' | 'outside';
+  items: ReturnType<typeof buildDetailItems>;
+  layout: ReturnType<typeof measureDetailViewport>['layout'];
+  navigatorBodyRow: number | null;
+}
+
+function isDetailAgentRunning(
+  activeAgents: Map<string, { prKey: string; status: string }>,
+  prKey: string | null
+): boolean {
+  if (!prKey) return false;
+  return Array.from(activeAgents.values()).some(
+    run => run.prKey === prKey && run.status === 'running'
+  );
+}
+
+function detailNavigatorBodyRow(panelRow: number, navigatorHeight: number): number | null {
+  return panelRow >= 2 && panelRow < navigatorHeight ? panelRow - 2 : null;
+}
+
+function detailTarget(
+  zone: DetailMouseTarget['zone'],
+  items: DetailMouseTarget['items'],
+  layout: DetailMouseTarget['layout'],
+  navigatorBodyRow: number | null = null
+): DetailMouseTarget {
+  return { zone, items, layout, navigatorBodyRow };
+}
+
+function resolveWideDetailMouseTarget(
+  contentX: number,
+  panelRow: number,
+  items: DetailMouseTarget['items'],
+  layout: DetailMouseTarget['layout']
+): DetailMouseTarget {
+  if (contentX <= layout.navigatorWidth) {
+    return detailTarget(
+      'navigator',
+      items,
+      layout,
+      detailNavigatorBodyRow(panelRow, layout.navigatorHeight)
+    );
+  }
+  if (contentX > layout.navigatorWidth + layout.panelGap) {
+    return detailTarget('inspector', items, layout);
+  }
+  return detailTarget('gap', items, layout);
+}
+
+function resolveStackedDetailMouseTarget(
+  panelRow: number,
+  items: DetailMouseTarget['items'],
+  layout: DetailMouseTarget['layout']
+): DetailMouseTarget {
+  if (panelRow <= layout.navigatorHeight) {
+    return detailTarget(
+      'navigator',
+      items,
+      layout,
+      detailNavigatorBodyRow(panelRow, layout.navigatorHeight)
+    );
+  }
+  if (panelRow === layout.navigatorHeight + 1) {
+    return detailTarget('gap', items, layout);
+  }
+  return detailTarget('inspector', items, layout);
+}
+
+function resolveDetailMouseTargetFromLayout(
+  event: MouseEvent,
+  pr: PullRequest,
+  focusedPr: string | null,
+  activeAgents: Map<string, { prKey: string; status: string }>,
+  termCols: number,
+  termRows: number
+): DetailMouseTarget {
+  const contentWidth = Math.max(1, termCols - 2);
+  const contentLeft = 2;
+  const contentRight = contentLeft + contentWidth - 1;
+  const viewport = measureDetailViewport(
+    pr,
+    contentWidth,
+    termRows,
+    isDetailAgentRunning(activeAgents, focusedPr)
+  );
+  const items = buildDetailItems(pr);
+
+  if (event.x < contentLeft || event.x > contentRight) {
+    return detailTarget('outside', items, viewport.layout);
+  }
+  if (event.y === 1) {
+    return detailTarget('breadcrumb', items, viewport.layout);
+  }
+
+  const panelRow = event.y - 1 - viewport.headerLineCount;
+  if (panelRow < 1 || panelRow > viewport.availableHeight) {
+    return detailTarget('outside', items, viewport.layout);
+  }
+
+  const contentX = event.x - contentLeft + 1;
+  return viewport.layout.isWide
+    ? resolveWideDetailMouseTarget(contentX, panelRow, items, viewport.layout)
+    : resolveStackedDetailMouseTarget(panelRow, items, viewport.layout);
+}
+
+function isMouseScrollEvent(event: MouseEvent): boolean {
+  return event.button === 64 || event.button === 65;
 }
 
 /** Fetch full PR detail on demand if the store only has search-stub data. */
@@ -472,6 +584,22 @@ export function App(): JSX.Element {
     }
   }
 
+  const resolveDetailMouseTarget = useCallback(
+    (event: MouseEvent): DetailMouseTarget | null => {
+      const pr = getFocusedPr(focusedPr);
+      if (!pr) return null;
+      return resolveDetailMouseTargetFromLayout(
+        event,
+        pr,
+        focusedPr,
+        vigilStore.getState().activeAgents,
+        stdout.columns ?? 80,
+        stdout.rows ?? 24
+      );
+    },
+    [focusedPr, stdout.columns, stdout.rows]
+  );
+
   // ─── Keyboard ─────────────────────────────────────────────────────
 
   useInput((input, key) => {
@@ -522,28 +650,90 @@ export function App(): JSX.Element {
 
   /** Handle mouse scroll wheel. */
   const onMouseScroll = useCallback(
-    (button: number): void => {
-      const delta = button === 64 ? -1 : 1;
-      if (view === 'dashboard') moveFocus(delta * numCols);
-      else if (view === 'detail') scrollView('detail', delta, detailLineCount);
+    (event: MouseEvent): void => {
+      const delta = event.button === 64 ? -1 : 1;
+      if (view === 'dashboard') {
+        moveFocus(delta * numCols);
+        return;
+      }
+      if (view !== 'detail') return;
+
+      const target = resolveDetailMouseTarget(event);
+      if (!target) return;
+
+      if (target.zone === 'navigator') {
+        setDetailFocus('navigator');
+        moveDetailSelection(delta, target.items.length);
+        return;
+      }
+
+      if (target.zone === 'inspector') {
+        setDetailFocus('inspector');
+        scrollView('detail', delta, detailLineCount);
+      }
     },
-    [view, moveFocus, numCols, scrollView, detailLineCount]
+    [
+      view,
+      moveFocus,
+      numCols,
+      resolveDetailMouseTarget,
+      setDetailFocus,
+      moveDetailSelection,
+      scrollView,
+      detailLineCount,
+    ]
+  );
+
+  const onDetailClick = useCallback(
+    (event: MouseEvent): void => {
+      const target = resolveDetailMouseTarget(event);
+      if (!target) return;
+
+      switch (target.zone) {
+        case 'breadcrumb':
+          setView('dashboard');
+          return;
+        case 'navigator': {
+          setDetailFocus('navigator');
+          if (target.navigatorBodyRow === null) return;
+          const hitIndex = detailNavigatorItemIndexAtRow(
+            target.items,
+            target.layout.navigatorHeight,
+            detailSelection,
+            target.navigatorBodyRow
+          );
+          if (hitIndex !== null) {
+            setDetailSelection(hitIndex);
+          }
+          return;
+        }
+        case 'inspector':
+          setDetailFocus('inspector');
+          return;
+        default:
+          return;
+      }
+    },
+    [resolveDetailMouseTarget, setView, setDetailFocus, detailSelection, setDetailSelection]
   );
 
   const handleMouse = useCallback(
     (event: MouseEvent) => {
-      if (event.button === 64 || event.button === 65) {
-        onMouseScroll(event.button);
+      if (isMouseScrollEvent(event)) {
+        onMouseScroll(event);
         return;
       }
 
       if (event.button !== 0 || event.isRelease) return;
 
-      if (view === 'detail') return;
+      if (view === 'detail') {
+        onDetailClick(event);
+        return;
+      }
 
       if (view === 'dashboard') onDashboardClick(event);
     },
-    [view, onMouseScroll, onDashboardClick]
+    [view, onMouseScroll, onDetailClick, onDashboardClick]
   );
 
   useMouse(handleMouse);
