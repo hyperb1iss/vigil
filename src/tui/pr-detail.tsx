@@ -25,6 +25,8 @@ const CHROME_LINES = 4;
 const MAX_INLINE_PASSING = 4;
 const MAX_COMMENTS = 12;
 const MAX_COMMENT_BODY = 3;
+const MAX_AGENT_ITEMS = 8;
+const MAX_AGENT_BODY = 4;
 /** Minimum content width to enable two-column layout */
 const TWO_COL_MIN_WIDTH = 100;
 
@@ -66,13 +68,148 @@ function stripMarkup(text: string): string {
     .trim();
 }
 
+type AutomatedReviewVendorId = 'codex' | 'claude' | 'coderabbit';
+
+interface AutomatedReviewVendor {
+  id: AutomatedReviewVendorId;
+  label: string;
+  icon: string;
+  color: string;
+  loginPatterns: readonly RegExp[];
+  bodyPatterns: readonly RegExp[];
+}
+
+interface AutomatedReviewItem {
+  key: string;
+  kind: 'review' | 'comment';
+  vendor: AutomatedReviewVendor;
+  authorLogin: string;
+  body: string;
+  timestamp: string;
+  reviewState?: PullRequest['reviews'][number]['state'];
+}
+
+interface FeedbackSections {
+  automatedItems: AutomatedReviewItem[];
+  humanReviews: PullRequest['reviews'];
+  humanComments: PullRequest['comments'];
+  suppressedBotComments: number;
+}
+
+const AUTOMATED_REVIEW_VENDORS: readonly AutomatedReviewVendor[] = [
+  {
+    id: 'codex',
+    label: 'CODEX',
+    icon: icons.terminal,
+    color: palette.neonCyan,
+    loginPatterns: [/\bcodex\b/i],
+    bodyPatterns: [/\bcodex\b/i, /\bopenai codex\b/i],
+  },
+  {
+    id: 'claude',
+    label: 'CLAUDE',
+    icon: icons.bolt,
+    color: palette.coral,
+    loginPatterns: [/\bclaude\b/i],
+    bodyPatterns: [/\bclaude\b/i],
+  },
+  {
+    id: 'coderabbit',
+    label: 'CODERABBIT',
+    icon: icons.eye,
+    color: palette.electricYellow,
+    loginPatterns: [/\bcoderabbit\b/i, /\bcoderabbitai\b/i],
+    bodyPatterns: [/\bcoderabbit\b/i],
+  },
+] as const;
+
+function matchesPatterns(value: string, patterns: readonly RegExp[]): boolean {
+  return patterns.some(pattern => pattern.test(value));
+}
+
+function detectAutomatedReviewVendor(
+  authorLogin: string,
+  body: string
+): AutomatedReviewVendor | null {
+  const normalizedBody = stripMarkup(body);
+
+  for (const vendor of AUTOMATED_REVIEW_VENDORS) {
+    if (matchesPatterns(authorLogin, vendor.loginPatterns)) {
+      return vendor;
+    }
+    if (normalizedBody && matchesPatterns(normalizedBody, vendor.bodyPatterns)) {
+      return vendor;
+    }
+  }
+
+  return null;
+}
+
 function isBotNoise(body: string, authorLogin: string): boolean {
+  if (detectAutomatedReviewVendor(authorLogin, body)) return false;
+
   const stripped = stripMarkup(body);
   if (stripped.length === 0 || /^[\s\n]*$/.test(stripped)) return true;
   if (/\[bot\]$/.test(authorLogin)) return true;
   if (/^(dependabot|renovate|codecov|sonarcloud|vercel|netlify|github-actions)/i.test(authorLogin))
     return true;
   return false;
+}
+
+function partitionReviewFeedback(pr: PullRequest): FeedbackSections {
+  const automatedItems: AutomatedReviewItem[] = [];
+  const humanReviews: PullRequest['reviews'] = [];
+  const humanComments: PullRequest['comments'] = [];
+  let suppressedBotComments = 0;
+
+  for (const review of pr.reviews) {
+    const vendor = detectAutomatedReviewVendor(review.author.login, review.body);
+    if (vendor) {
+      automatedItems.push({
+        key: `review:${review.id}`,
+        kind: 'review',
+        vendor,
+        authorLogin: review.author.login,
+        body: review.body,
+        timestamp: review.submittedAt,
+        reviewState: review.state,
+      });
+      continue;
+    }
+
+    humanReviews.push(review);
+  }
+
+  for (const comment of pr.comments) {
+    const vendor = detectAutomatedReviewVendor(comment.author.login, comment.body);
+    if (vendor) {
+      automatedItems.push({
+        key: `comment:${comment.id}`,
+        kind: 'comment',
+        vendor,
+        authorLogin: comment.author.login,
+        body: comment.body,
+        timestamp: comment.createdAt,
+      });
+      continue;
+    }
+
+    if (isBotNoise(comment.body, comment.author.login)) {
+      suppressedBotComments += 1;
+      continue;
+    }
+
+    humanComments.push(comment);
+  }
+
+  automatedItems.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+
+  return {
+    automatedItems,
+    humanReviews,
+    humanComments,
+    suppressedBotComments,
+  };
 }
 
 // ─── Virtual Line ────────────────────────────────────────────────────
@@ -318,37 +455,145 @@ function buildSingleReviewLines(
   return lines;
 }
 
-function buildReviewsCard(pr: PullRequest, w: number): ContentLine[] {
+function buildReviewsCard(reviews: PullRequest['reviews'], w: number): ContentLine[] {
   const c = palette.electricPurple;
   const lines: ContentLine[] = [];
 
-  const approved = pr.reviews.filter(r => r.state === 'APPROVED').length;
-  const changes = pr.reviews.filter(r => r.state === 'CHANGES_REQUESTED').length;
-  const parts: string[] = [`${pr.reviews.length}`];
+  const approved = reviews.filter(r => r.state === 'APPROVED').length;
+  const changes = reviews.filter(r => r.state === 'CHANGES_REQUESTED').length;
+  const parts: string[] = [`${reviews.length}`];
   if (approved > 0) parts.push(`${checkIndicators.passing.symbol}${approved}`);
   if (changes > 0) parts.push(`${checkIndicators.failing.symbol}${changes}`);
-  const sub = pr.reviews.length > 0 ? `(${parts.join(' \u00B7 ')})` : '(none)';
+  const sub = reviews.length > 0 ? `(${parts.join(' \u00B7 ')})` : '(none)';
 
   lines.push(cardTop('reviews-top', 'Reviews', sub, w, c));
 
-  if (pr.reviews.length === 0) {
+  if (reviews.length === 0) {
     lines.push(
       cardRow(
         'reviews-empty',
         <Text color={semantic.dim} italic>
-          No reviews yet
+          No human reviews yet
         </Text>,
         w,
         c
       )
     );
   } else {
-    for (const review of pr.reviews) {
+    for (const review of reviews) {
       lines.push(...buildSingleReviewLines(review, w, c));
     }
   }
 
   lines.push(cardBottom('reviews-bottom', w, c));
+  return lines;
+}
+
+function automatedItemKindStyle(item: AutomatedReviewItem): {
+  color: string;
+  symbol: string;
+  label: string;
+} {
+  if (item.kind === 'review' && item.reviewState) {
+    return reviewStateStyle(item.reviewState);
+  }
+
+  return {
+    color: semantic.muted,
+    symbol: icons.comment,
+    label: 'comment',
+  };
+}
+
+function buildAutomatedFeedbackCard(items: AutomatedReviewItem[], w: number): ContentLine[] {
+  if (items.length === 0) return [];
+
+  const c = palette.neonCyan;
+  const lines: ContentLine[] = [];
+  const shown = items.slice(0, MAX_AGENT_ITEMS);
+  const hiddenCount = Math.max(0, items.length - shown.length);
+  const activeVendors = new Set<AutomatedReviewVendorId>(items.map(item => item.vendor.id));
+
+  lines.push(
+    cardTop(
+      'agent-feedback-top',
+      `${icons.cogs} Agent Feedback`,
+      activeVendors.size > 1
+        ? `(${items.length} \u00B7 ${activeVendors.size} agents)`
+        : `(${items.length})`,
+      w,
+      c
+    )
+  );
+
+  if (hiddenCount > 0) {
+    lines.push(
+      cardRow(
+        'agent-feedback-hidden',
+        <Text color={semantic.dim}>
+          {`${icons.ellipsis} ${hiddenCount} earlier item${hiddenCount !== 1 ? 's' : ''}`}
+        </Text>,
+        w,
+        c
+      )
+    );
+  }
+
+  for (let index = 0; index < shown.length; index += 1) {
+    const item = shown[index];
+    if (!item) continue;
+
+    if (index > 0) {
+      lines.push(cardBlank(`agent-feedback-sep-${item.key}`, w, c));
+    }
+
+    const kind = automatedItemKindStyle(item);
+    lines.push(
+      spacedCardRow(
+        `agent-feedback-header-${item.key}`,
+        <Text wrap="truncate-end">
+          <Text color={item.vendor.color} bold>
+            {item.vendor.icon} {item.vendor.label}
+          </Text>
+          <Text color={semantic.dim}>{' · '}</Text>
+          <Text color={palette.neonCyan} bold>
+            {item.authorLogin}
+          </Text>
+          <Text color={semantic.dim}>{' · '}</Text>
+          <Text color={kind.color}>
+            {kind.symbol} {kind.label}
+          </Text>
+        </Text>,
+        <Text color={semantic.timestamp} dimColor>
+          {timeAgo(item.timestamp)}
+        </Text>,
+        w,
+        c
+      )
+    );
+
+    const bodyLines = stripMarkup(item.body)
+      .split('\n')
+      .filter(line => line.trim().length > 0)
+      .slice(0, MAX_AGENT_BODY);
+
+    for (let lineIndex = 0; lineIndex < bodyLines.length; lineIndex += 1) {
+      const line = bodyLines[lineIndex];
+      if (!line) continue;
+      lines.push(
+        cardRow(
+          `agent-feedback-body-${item.key}-${lineIndex}`,
+          <Text color={semantic.muted} wrap="truncate-end">
+            {`  ${truncate(line, w - 10)}`}
+          </Text>,
+          w,
+          c
+        )
+      );
+    }
+  }
+
+  lines.push(cardBottom('agent-feedback-bottom', w, c));
   return lines;
 }
 
@@ -532,31 +777,33 @@ function buildCICard(pr: PullRequest, w: number): ContentLine[] {
 
 // ─── Section: Comments ───────────────────────────────────────────────
 
-function buildCommentsCard(pr: PullRequest, w: number): ContentLine[] {
+function buildCommentsCard(
+  comments: PullRequest['comments'],
+  suppressedBotComments: number,
+  w: number
+): ContentLine[] {
   const c = palette.coral;
   const lines: ContentLine[] = [];
 
-  const meaningful = pr.comments.filter(cm => !isBotNoise(cm.body, cm.author.login));
-  const botCount = pr.comments.length - meaningful.length;
-  let sub = `(${meaningful.length})`;
-  if (botCount > 0) sub = `(${meaningful.length} \u00B7 ${botCount} bot)`;
+  let sub = `(${comments.length})`;
+  if (suppressedBotComments > 0) sub = `(${comments.length} \u00B7 ${suppressedBotComments} bot)`;
 
   lines.push(cardTop('comments-top', 'Comments', sub, w, c));
 
-  if (meaningful.length === 0) {
+  if (comments.length === 0) {
     lines.push(
       cardRow(
         'comments-empty',
         <Text color={semantic.dim} italic>
-          {pr.comments.length > 0 ? 'Only bot comments' : 'No comments'}
+          {suppressedBotComments > 0 ? 'No human comments' : 'No comments'}
         </Text>,
         w,
         c
       )
     );
   } else {
-    const shown = meaningful.slice(-MAX_COMMENTS);
-    const hiddenCount = meaningful.length - shown.length;
+    const shown = comments.slice(-MAX_COMMENTS);
+    const hiddenCount = comments.length - shown.length;
 
     if (hiddenCount > 0) {
       lines.push(
@@ -779,6 +1026,7 @@ function buildHeaderCard(
 
 function buildContentLines(pr: PullRequest, width: number): ContentLine[] {
   const lines: ContentLine[] = [];
+  const feedback = partitionReviewFeedback(pr);
 
   // Conflict card (always full width)
   const conflict = buildConflictCard(pr, width);
@@ -787,19 +1035,25 @@ function buildContentLines(pr: PullRequest, width: number): ContentLine[] {
     lines.push(gap('conflict-gap'));
   }
 
+  const automatedFeedback = buildAutomatedFeedbackCard(feedback.automatedItems, width);
+  if (automatedFeedback.length > 0) {
+    lines.push(...automatedFeedback);
+    lines.push(gap('agent-feedback-gap'));
+  }
+
   // Two-column layout for Reviews + CI on wide terminals
   if (width >= TWO_COL_MIN_WIDTH) {
     const colGap = 2;
     const leftW = Math.floor((width - colGap) / 2);
     const rightW = width - leftW - colGap;
 
-    const reviews = buildReviewsCard(pr, leftW);
+    const reviews = buildReviewsCard(feedback.humanReviews, leftW);
     const ci = buildCICard(pr, rightW);
 
     lines.push(...mergeColumns(reviews, ci, leftW, rightW, width, colGap));
     lines.push(gap('reviews-ci-gap'));
   } else {
-    lines.push(...buildReviewsCard(pr, width));
+    lines.push(...buildReviewsCard(feedback.humanReviews, width));
     lines.push(gap('reviews-gap'));
 
     lines.push(...buildCICard(pr, width));
@@ -807,7 +1061,7 @@ function buildContentLines(pr: PullRequest, width: number): ContentLine[] {
   }
 
   // Comments (full width — text content benefits from space)
-  lines.push(...buildCommentsCard(pr, width));
+  lines.push(...buildCommentsCard(feedback.humanComments, feedback.suppressedBotComments, width));
 
   // Labels (full width)
   const labels = buildLabelsCard(pr, width);
@@ -818,6 +1072,12 @@ function buildContentLines(pr: PullRequest, width: number): ContentLine[] {
 
   return lines;
 }
+
+export const _internal = {
+  detectAutomatedReviewVendor,
+  partitionReviewFeedback,
+  isBotNoise,
+};
 
 // ─── Hook: Line Count for Scroll Max ─────────────────────────────────
 
