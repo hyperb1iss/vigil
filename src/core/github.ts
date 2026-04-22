@@ -242,6 +242,16 @@ const TRUNCATED_DETAIL_FETCH_CONCURRENCY = 4;
 const GH_TRANSIENT_RETRIES = 3;
 const GH_RETRY_BASE_DELAY_MS = 400;
 const GH_GRAPHQL_SEARCH_CEILING = 1000;
+const PR_DETAIL_CACHE_MAX_ENTRIES = 512;
+const PR_DETAIL_CACHE_TTL_MS = 10 * 60 * 1000;
+
+interface PrDetailCacheEntry {
+  pr: PullRequest;
+  cachedAt: number;
+}
+
+const prDetailCache = new Map<string, PrDetailCacheEntry>();
+const prDetailInFlight = new Map<string, Promise<PullRequest>>();
 
 const GRAPHQL_SEARCH_DISCOVERY_QUERY = `
   query($searchQuery: String!, $endCursor: String) {
@@ -1420,7 +1430,7 @@ export async function fetchMyOpenPrs(
     prMap.set(pr.key, pr);
   }
 
-  const detailRepos = findDetailRepos(repoSet, searchResults, knownPrs, prMap, repoContexts);
+  const detailRepos = findDetailRepos(repoSet, searchResults, knownPrs, prMap);
   const shouldReturnSearchStubsOnly =
     detailRepos.size === 0 && (!repoContexts || repoContexts.size === 0);
   if (shouldReturnSearchStubsOnly) {
@@ -1512,7 +1522,9 @@ async function hydrateGraphqlDetailNodes(
       return [{ index, node }];
     }
 
-    prs[index] = buildPrFromDetail(flattenGraphqlDetailPr(node), repo);
+    const pr = buildPrFromDetail(flattenGraphqlDetailPr(node), repo);
+    setCachedPrDetail(pr.key, pr);
+    prs[index] = pr;
     return [];
   });
 
@@ -1526,7 +1538,9 @@ async function hydrateGraphqlDetailNodes(
     TRUNCATED_DETAIL_FETCH_CONCURRENCY,
     async ({ index, node }) => {
       try {
-        prs[index] = await fetchPrDetail(owner, name, node.number);
+        prs[index] = await fetchPrDetail(owner, name, node.number, {
+          updatedAt: node.updatedAt,
+        });
       } catch {
         prs[index] = buildPrFromDetail(flattenGraphqlDetailPr(node), repo);
       }
@@ -1872,29 +1886,55 @@ async function hydrateTruncatedDetailPr(
 export async function fetchPrDetail(
   owner: string,
   repo: string,
-  number: number
+  number: number,
+  options: { updatedAt?: string | undefined } = {}
 ): Promise<PullRequest> {
   const nameWithOwner = `${owner}/${repo}`;
-  const response = await runGitHubGraphqlWithRetry<{
-    repository?: {
-      pullRequest?: GhGraphqlDetailPr | null;
-    } | null;
-  }>(GRAPHQL_PR_DETAIL_QUERY, {
-    owner,
-    repo,
-    number,
-  });
-
-  const raw = response.repository?.pullRequest;
-  if (!raw) {
-    throw new Error(`Pull request ${nameWithOwner}#${number} was not found.`);
+  const cacheKey = `${nameWithOwner}#${number}`;
+  const cached = getCachedPrDetail(cacheKey, options.updatedAt);
+  if (cached) {
+    return cached;
   }
 
-  const detail = isGraphqlDetailPrTruncated(raw)
-    ? await hydrateTruncatedDetailPr(owner, repo, number, raw)
-    : flattenGraphqlDetailPr(raw);
+  const inFlight = prDetailInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
 
-  return buildPrFromDetail(detail, nameWithOwner);
+  const request = (async () => {
+    const response = await runGitHubGraphqlWithRetry<{
+      repository?: {
+        pullRequest?: GhGraphqlDetailPr | null;
+      } | null;
+    }>(GRAPHQL_PR_DETAIL_QUERY, {
+      owner,
+      repo,
+      number,
+    });
+
+    const raw = response.repository?.pullRequest;
+    if (!raw) {
+      throw new Error(`Pull request ${nameWithOwner}#${number} was not found.`);
+    }
+
+    const detail = isGraphqlDetailPrTruncated(raw)
+      ? await hydrateTruncatedDetailPr(owner, repo, number, raw)
+      : flattenGraphqlDetailPr(raw);
+
+    const pr = buildPrFromDetail(detail, nameWithOwner);
+    setCachedPrDetail(cacheKey, pr);
+    return pr;
+  })();
+
+  prDetailInFlight.set(cacheKey, request);
+
+  try {
+    return await request;
+  } finally {
+    if (prDetailInFlight.get(cacheKey) === request) {
+      prDetailInFlight.delete(cacheKey);
+    }
+  }
 }
 
 /**
@@ -1978,18 +2018,10 @@ function findDetailRepos(
   repoSet: Set<string>,
   searchResults: GhSearchPr[],
   knownPrs: Map<string, PullRequest> | undefined,
-  prMap: Map<string, PullRequest>,
-  repoContexts?: Map<string, RepoRuntimeContext>
+  prMap: Map<string, PullRequest>
 ): Set<string> {
-  const reposNeedingContext = new Set<string>();
-  for (const repo of repoContexts?.keys() ?? []) {
-    if (repoSet.has(repo)) {
-      reposNeedingContext.add(repo);
-    }
-  }
-
   if (!knownPrs || knownPrs.size === 0) {
-    return new Set([...repoSet, ...reposNeedingContext]);
+    return new Set(repoSet);
   }
 
   const stale = new Set<string>();
@@ -2001,10 +2033,53 @@ function findDetailRepos(
     }
   }
 
-  for (const repo of reposNeedingContext) {
-    stale.add(repo);
-  }
   return stale;
+}
+
+function getCachedPrDetail(key: string, updatedAt?: string): PullRequest | undefined {
+  const entry = prDetailCache.get(key);
+  if (!entry) {
+    return;
+  }
+
+  if (updatedAt) {
+    if (entry.pr.updatedAt !== updatedAt) {
+      prDetailCache.delete(key);
+      return;
+    }
+  } else if (Date.now() - entry.cachedAt > PR_DETAIL_CACHE_TTL_MS) {
+    prDetailCache.delete(key);
+    return;
+  }
+
+  prDetailCache.delete(key);
+  prDetailCache.set(key, entry);
+  return entry.pr;
+}
+
+function setCachedPrDetail(key: string, pr: PullRequest): void {
+  if (prDetailCache.has(key)) {
+    prDetailCache.delete(key);
+  }
+
+  prDetailCache.set(key, {
+    pr,
+    cachedAt: Date.now(),
+  });
+
+  while (prDetailCache.size > PR_DETAIL_CACHE_MAX_ENTRIES) {
+    const oldestKey = prDetailCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+
+    prDetailCache.delete(oldestKey);
+  }
+}
+
+function resetPrDetailCache(): void {
+  prDetailCache.clear();
+  prDetailInFlight.clear();
 }
 
 /** Check if any PR in this repo has a different updatedAt than what we know. */
@@ -2098,6 +2173,9 @@ export const _internal = {
   buildPrFromSearch,
   carryForwardKnown,
   findDetailRepos,
+  getCachedPrDetail,
+  setCachedPrDetail,
+  resetPrDetailCache,
   buildAuthoredOpenSearchQuery,
   connectionHasNextPage,
   collectConnectionNodes,

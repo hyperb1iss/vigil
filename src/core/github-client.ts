@@ -3,6 +3,8 @@ import { graphql } from '@octokit/graphql';
 const DEFAULT_GITHUB_API_TIMEOUT_MS = 30_000;
 const DEFAULT_GITHUB_API_RETRIES = 3;
 const GITHUB_API_RETRY_BASE_DELAY_MS = 400;
+const DEFAULT_GITHUB_RATE_LIMIT_BACKOFF_MS = 60_000;
+const RATE_LIMIT_BACKOFF_BUFFER_MS = 1_000;
 const GITHUB_VIEWER_LOGIN_QUERY = `
   query {
     viewer {
@@ -13,6 +15,18 @@ const GITHUB_VIEWER_LOGIN_QUERY = `
 
 let githubTokenPromise: Promise<string> | null = null;
 let viewerLoginPromise: Promise<string> | null = null;
+let githubRateLimitBackoffUntil = 0;
+
+export class GitHubRateLimitError extends Error {
+  constructor(public readonly retryAt?: number) {
+    super(
+      retryAt
+        ? `GitHub API rate limit exceeded until ${new Date(retryAt).toISOString()}.`
+        : 'GitHub API rate limit exceeded.'
+    );
+    this.name = 'GitHubRateLimitError';
+  }
+}
 
 export interface GitHubGraphqlRequestOptions {
   timeoutMs?: number;
@@ -176,7 +190,64 @@ function getGitHubErrorStatus(error: unknown): number | undefined {
 }
 
 function getGitHubErrorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string'
+    ? error.message
+    : String(error);
+}
+
+function getGitHubResponseHeaders(error: unknown): Record<string, string | number | undefined> {
+  if (typeof error !== 'object' || error === null) {
+    return {};
+  }
+
+  if ('headers' in error && typeof error.headers === 'object' && error.headers !== null) {
+    return error.headers as Record<string, string | number | undefined>;
+  }
+
+  if (
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'headers' in error.response &&
+    typeof error.response.headers === 'object' &&
+    error.response.headers !== null
+  ) {
+    return error.response.headers as Record<string, string | number | undefined>;
+  }
+
+  return {};
+}
+
+function readGitHubHeader(
+  headers: Record<string, string | number | undefined>,
+  key: string
+): string | undefined {
+  const value = headers[key];
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function getGitHubRateLimitRetryAt(error: unknown, now = Date.now()): number | undefined {
+  const headers = getGitHubResponseHeaders(error);
+  const retryAfter = Number.parseInt(readGitHubHeader(headers, 'retry-after') ?? '', 10);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return now + retryAfter * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
+  }
+
+  const reset = Number.parseInt(readGitHubHeader(headers, 'x-ratelimit-reset') ?? '', 10);
+  if (Number.isFinite(reset) && reset > 0) {
+    return reset * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
+  }
 }
 
 function isGitHubAuthFailure(error: unknown): boolean {
@@ -195,10 +266,14 @@ function isGitHubAuthFailure(error: unknown): boolean {
 function isGitHubRateLimitFailure(error: unknown): boolean {
   const status = getGitHubErrorStatus(error);
   const lower = getGitHubErrorText(error).toLowerCase();
+  const headers = getGitHubResponseHeaders(error);
+  const remaining = Number.parseInt(readGitHubHeader(headers, 'x-ratelimit-remaining') ?? '', 10);
+  const hasRetryAfter = readGitHubHeader(headers, 'retry-after') !== undefined;
 
   return (
-    status === 403 ||
     status === 429 ||
+    ((status === 403 || status === 200) && remaining === 0) ||
+    hasRetryAfter ||
     lower.includes('rate limit') ||
     lower.includes('secondary rate limit')
   );
@@ -214,18 +289,44 @@ function classifyGitHubApiError(error: unknown): Error {
   }
 
   if (isGitHubRateLimitFailure(error)) {
-    return new Error('GitHub API rate limit exceeded.');
+    return new GitHubRateLimitError(getGitHubRateLimitRetryAt(error));
   }
 
   if (lower.includes('aborterror')) {
     return new Error('GitHub API request timed out.');
   }
 
-  return error instanceof Error ? error : new Error(String(error));
+  return error instanceof Error ? error : new Error(getGitHubErrorText(error));
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getGitHubRateLimitBackoffUntil(now = Date.now()): number | undefined {
+  return githubRateLimitBackoffUntil > now ? githubRateLimitBackoffUntil : undefined;
+}
+
+function setGitHubRateLimitBackoffUntil(until: number): void {
+  if (!Number.isFinite(until)) {
+    return;
+  }
+
+  githubRateLimitBackoffUntil = Math.max(githubRateLimitBackoffUntil, until);
+}
+
+function recordGitHubRateLimit(error: unknown, now = Date.now()): void {
+  if (!isGitHubRateLimitFailure(error)) {
+    return;
+  }
+
+  setGitHubRateLimitBackoffUntil(
+    getGitHubRateLimitRetryAt(error, now) ?? now + DEFAULT_GITHUB_RATE_LIMIT_BACKOFF_MS
+  );
+}
+
+export function resetGitHubRateLimitBackoff(): void {
+  githubRateLimitBackoffUntil = 0;
 }
 
 export async function runGitHubGraphqlWithRetry<TData>(
@@ -239,6 +340,11 @@ export async function runGitHubGraphqlWithRetry<TData>(
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const backoffUntil = getGitHubRateLimitBackoffUntil();
+    if (backoffUntil) {
+      throw new GitHubRateLimitError(backoffUntil);
+    }
+
     const { signal, dispose } = createAbortSignal(timeoutMs);
 
     try {
@@ -259,6 +365,7 @@ export async function runGitHubGraphqlWithRetry<TData>(
       });
     } catch (error) {
       lastError = error;
+      recordGitHubRateLimit(error);
       const isLastAttempt = attempt === attempts;
       if (isLastAttempt || !isTransientGitHubApiFailure(error)) {
         if (isGitHubAuthFailure(error)) {
@@ -295,6 +402,7 @@ export async function getGitHubViewerLogin(): Promise<string> {
 function resetGitHubClientCaches(): void {
   githubTokenPromise = null;
   viewerLoginPromise = null;
+  resetGitHubRateLimitBackoff();
 }
 
 export const _internal = {
@@ -303,10 +411,14 @@ export const _internal = {
   getConfiguredGitHubGraphqlBaseUrl,
   getGitHubErrorStatus,
   getGitHubErrorText,
+  getGitHubRateLimitBackoffUntil,
+  getGitHubRateLimitRetryAt,
+  getGitHubResponseHeaders,
   isGitHubAuthFailure,
   isGitHubRateLimitFailure,
   isTransientGitHubApiFailure,
   normalizeGitHubGraphqlBaseUrl,
   resetGitHubClientCaches,
+  setGitHubRateLimitBackoffUntil,
   resolveGitHubTokenFromEnv,
 };

@@ -22,6 +22,7 @@ import {
   shouldPlaySound,
 } from './notifications/notify.js';
 import { vigilStore } from './store/index.js';
+import type { ActionType, ProposedAction } from './types/agents.js';
 import type { PrEvent } from './types/events.js';
 import type { Notification } from './types/store.js';
 
@@ -108,6 +109,31 @@ function isFailedChecksEvent(event: PrEvent): boolean {
 
 function isChangesRequestedEvent(event: PrEvent): boolean {
   return event.data?.type === 'review_submitted' && event.data.review.state === 'CHANGES_REQUESTED';
+}
+
+// ─── Action → Notification mapping ───────────────────────────────────
+
+/**
+ * Only the impactful action types raise a desktop ping. Drafting a comment or
+ * prepping a worktree stays quiet so the badge in the status bar does the work.
+ */
+const HIGH_PRIORITY_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
+  'apply_fix',
+  'rebase',
+  'merge',
+  'close',
+]);
+
+function actionToNotification(action: ProposedAction): Notification {
+  const isHighPriority = HIGH_PRIORITY_ACTION_TYPES.has(action.type);
+  return {
+    id: crypto.randomUUID(),
+    prKey: action.prKey,
+    message: `Action needed: ${action.type} on ${action.prKey}`,
+    priority: isHighPriority ? 'high' : 'medium',
+    timestamp: new Date().toISOString(),
+    read: false,
+  };
 }
 
 /** Check notification config flags for a given event type. */
@@ -251,6 +277,40 @@ function dispatchRadarNotifications(
       );
     }
   }
+}
+
+/**
+ * Subscribe to the store and raise a notification the first time we see each
+ * pending action that requires confirmation. Returns an unsubscribe fn.
+ */
+function watchPendingActions(notificationsEnabled: boolean): () => void {
+  const seenActionIds = new Set<string>();
+
+  return vigilStore.subscribe(state => {
+    if (!notificationsEnabled) return;
+
+    for (const action of state.actionQueue) {
+      if (action.status !== 'pending') continue;
+      if (!action.requiresConfirmation) continue;
+      if (seenActionIds.has(action.id)) continue;
+
+      seenActionIds.add(action.id);
+
+      const notification = actionToNotification(action);
+      state.addNotification(notification);
+
+      if (shouldNotifyDesktop(notification)) {
+        const pr = state.prs.get(action.prKey) ?? state.radarPrs.get(action.prKey)?.pr;
+        void sendDesktopNotification(
+          'Vigil · Action needed',
+          `${action.type} on ${action.prKey}`,
+          action.prKey,
+          shouldPlaySound(notification),
+          pr?.url
+        );
+      }
+    }
+  });
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────
@@ -454,6 +514,8 @@ async function main(): Promise<void> {
 
   const stopExecutor = startActionExecutor(undefined, { repoContexts });
 
+  const stopActionWatcher = watchPendingActions(config.notifications.enabled);
+
   // Render TUI
   const { waitUntilExit } = render(React.createElement(App));
 
@@ -463,6 +525,7 @@ async function main(): Promise<void> {
     cleanup();
     stopRadar?.();
     stopExecutor();
+    stopActionWatcher();
   }
 }
 

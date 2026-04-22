@@ -1032,7 +1032,7 @@ async function hydrateRadarMetadata(
 
   try {
     const { owner, name } = splitRepo(repo);
-    return await fetchPrDetail(owner, name, raw.number);
+    return await fetchPrDetail(owner, name, raw.number, { updatedAt: raw.updatedAt });
   } catch {
     return fallbackPr;
   }
@@ -1072,7 +1072,7 @@ async function collectDirectReviewRadar(
 
     try {
       const { owner, name } = splitRepo(raw.repository.nameWithOwner);
-      pr = await fetchPrDetail(owner, name, raw.number);
+      pr = await fetchPrDetail(owner, name, raw.number, { updatedAt: raw.updatedAt });
     } catch {
       // Fall back to search data when detail hydration fails.
     }

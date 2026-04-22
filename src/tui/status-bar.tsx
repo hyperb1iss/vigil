@@ -17,6 +17,24 @@ import {
 
 const ALL_STATES: PrState[] = ['hot', 'waiting', 'ready', 'blocked', 'dormant'];
 
+function PendingActionBadge({ count }: { count: number }): JSX.Element | null {
+  if (count <= 0) return null;
+  return (
+    <Text>
+      <Text color={semantic.dim}>{' │ '}</Text>
+      <Text color={palette.electricYellow}>
+        {icons.shield} <Text bold>{count}</Text>
+      </Text>
+      <Text color={semantic.muted}> pending </Text>
+      <Text color={semantic.dim}>[</Text>
+      <Text color={palette.neonCyan} bold>
+        a
+      </Text>
+      <Text color={semantic.dim}>]</Text>
+    </Text>
+  );
+}
+
 export function StatusBar(): JSX.Element {
   const prs = useStore(vigilStore, s => s.prs);
   const prStates = useStore(vigilStore, s => s.prStates);
@@ -32,6 +50,10 @@ export function StatusBar(): JSX.Element {
   const radarLastPollAt = useStore(vigilStore, s => s.radarLastPollAt);
   const pollError = useStore(vigilStore, s => s.pollError);
   const radarPollError = useStore(vigilStore, s => s.radarPollError);
+  const pendingActionCount = useStore(
+    vigilStore,
+    s => s.actionQueue.filter(a => a.status === 'pending').length
+  );
 
   // Tally state counts
   const counts: Record<PrState, number> = { hot: 0, waiting: 0, ready: 0, blocked: 0, dormant: 0 };
@@ -67,6 +89,8 @@ export function StatusBar(): JSX.Element {
         <Text color={mode === 'yolo' ? palette.coral : palette.neonCyan} bold>
           {mode === 'yolo' ? 'YOLO' : 'HITL'}
         </Text>
+
+        <PendingActionBadge count={pendingActionCount} />
 
         <Text color={semantic.dim}>{' │ '}</Text>
 

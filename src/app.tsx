@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { fetchPrDetail } from './core/github.js';
+import { resetGitHubRateLimitBackoff } from './core/github-client.js';
 import { poll } from './core/poller.js';
 import { pollRadar } from './core/radar-poller.js';
 import { vigilStore } from './store/index.js';
@@ -180,7 +181,7 @@ async function fetchDetailIfNeeded(key: string): Promise<void> {
 
   detailFetchInFlight.add(key);
   try {
-    const detail = await fetchPrDetail(owner, repo, number);
+    const detail = await fetchPrDetail(owner, repo, number, { updatedAt: pr.updatedAt });
     const next = vigilStore.getState();
     if (next.prs.has(key)) {
       next.updatePr(key, detail);
@@ -376,6 +377,7 @@ export function App(): JSX.Element {
           setMode(mode === 'hitl' ? 'yolo' : 'hitl');
           return true;
         case 'r': {
+          resetGitHubRateLimitBackoff();
           void poll();
           const state = vigilStore.getState();
           if (state.config.radar.enabled) {
@@ -391,6 +393,12 @@ export function App(): JSX.Element {
         case 'x':
           setSearchQuery(null);
           setView(view === 'activity' ? 'dashboard' : 'activity');
+          return true;
+        case 'a':
+          // The action panel owns `a` for approve-all while it's focused.
+          if (view === 'action') return false;
+          setSearchQuery(null);
+          setView('action');
           return true;
         default:
           return false;
@@ -574,13 +582,9 @@ export function App(): JSX.Element {
     }
 
     if (detailFocus === 'navigator') {
-      if (onDetailNavigatorKey(input, key)) return;
-    } else if (onDetailInspectorKey(input, key)) {
-      return;
-    }
-
-    if (input === 'a') {
-      setView('action');
+      onDetailNavigatorKey(input, key);
+    } else {
+      onDetailInspectorKey(input, key);
     }
   }
 

@@ -20,6 +20,9 @@ const {
   buildPrFromSearch,
   carryForwardKnown,
   findDetailRepos,
+  getCachedPrDetail,
+  setCachedPrDetail,
+  resetPrDetailCache,
   buildAuthoredOpenSearchQuery,
   connectionHasNextPage,
   collectConnectionNodes,
@@ -966,45 +969,50 @@ describe('findDetailRepos', () => {
     );
   });
 
-  test('hydrates cold-start repos that have local runtime context', () => {
-    const repos = new Set(['owner/repo', 'other/repo']);
-    const searchResults = [
-      makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z'),
-      makeSearchPr('other/repo', 2, '2026-03-01T00:00:00Z'),
-    ];
-    const repoContexts = new Map([
-      [
-        'owner/repo',
-        {
-          repoDir: '/tmp/owner-repo',
-          config: { owner: 'owner', repo: 'repo', baseBranch: 'main' },
-        },
-      ],
-    ]);
-
-    expect(findDetailRepos(repos, searchResults, undefined, new Map(), repoContexts)).toEqual(
-      new Set(['owner/repo', 'other/repo'])
-    );
-  });
-
-  test('forces detail refresh for repos with local runtime context even when unchanged', () => {
+  test('reuses unchanged repos once detail has already been hydrated', () => {
     const repos = new Set(['owner/repo']);
     const searchResults = [makeSearchPr('owner/repo', 1, '2026-03-01T00:00:00Z')];
     const known = new Map([['owner/repo#1', makePr('owner/repo#1', '2026-03-01T00:00:00Z')]]);
     const prMap = new Map([['owner/repo#1', makePr('owner/repo#1', '2026-03-01T00:00:00Z')]]);
-    const repoContexts = new Map([
-      [
-        'owner/repo',
-        {
-          repoDir: '/tmp/owner-repo',
-          config: { owner: 'owner', repo: 'repo', baseBranch: 'main' },
-        },
-      ],
-    ]);
 
-    expect(findDetailRepos(repos, searchResults, known, prMap, repoContexts)).toEqual(
-      new Set(['owner/repo'])
-    );
+    expect(findDetailRepos(repos, searchResults, known, prMap)).toEqual(new Set());
+  });
+});
+
+describe('pr detail cache', () => {
+  test('reuses cached detail when updatedAt still matches', () => {
+    const pr: PullRequest = {
+      key: 'owner/repo#1',
+      number: 1,
+      title: 'PR 1',
+      body: '',
+      url: 'https://github.com/owner/repo/pull/1',
+      repository: { name: 'repo', nameWithOwner: 'owner/repo' },
+      author: { login: 'dev', isBot: false },
+      headRefName: 'feat/x',
+      baseRefName: 'main',
+      isDraft: false,
+      state: 'OPEN',
+      mergeable: 'UNKNOWN',
+      mergeStateStatus: 'UNKNOWN',
+      reviewDecision: '',
+      reviews: [],
+      comments: [],
+      checks: [],
+      labels: [],
+      reviewRequests: [],
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-01T00:00:00Z',
+    };
+
+    resetPrDetailCache();
+    setCachedPrDetail('owner/repo#1', pr);
+
+    expect(getCachedPrDetail('owner/repo#1', '2026-03-01T00:00:00Z')).toEqual(pr);
+    expect(getCachedPrDetail('owner/repo#1', '2026-03-02T00:00:00Z')).toBeUndefined();
   });
 });
 

@@ -95,4 +95,54 @@ describe('classifyGitHubApiError', () => {
     });
     expect(error.message).toContain('rate limit');
   });
+
+  test('keeps non-rate-limit 403s intact', () => {
+    const error = _internal.classifyGitHubApiError({
+      status: 403,
+      message: 'Resource not accessible by integration',
+    });
+    expect(error.message).toBe('Resource not accessible by integration');
+  });
+});
+
+describe('getGitHubRateLimitRetryAt', () => {
+  test('prefers retry-after when GitHub provides it', () => {
+    const retryAt = _internal.getGitHubRateLimitRetryAt(
+      {
+        status: 429,
+        response: {
+          headers: {
+            'retry-after': '15',
+          },
+        },
+      },
+      1_000
+    );
+
+    expect(retryAt).toBe(17_000);
+  });
+
+  test('falls back to x-ratelimit-reset when available', () => {
+    const retryAt = _internal.getGitHubRateLimitRetryAt({
+      status: 403,
+      response: {
+        headers: {
+          'x-ratelimit-remaining': '0',
+          'x-ratelimit-reset': '123',
+        },
+      },
+    });
+
+    expect(retryAt).toBe(124_000);
+  });
+});
+
+describe('rate-limit backoff state', () => {
+  test('tracks the latest retry time until reset', () => {
+    _internal.setGitHubRateLimitBackoffUntil(5_000);
+    expect(_internal.getGitHubRateLimitBackoffUntil(4_000)).toBe(5_000);
+
+    _internal.resetGitHubClientCaches();
+    expect(_internal.getGitHubRateLimitBackoffUntil(4_000)).toBeUndefined();
+  });
 });
