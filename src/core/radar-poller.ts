@@ -166,7 +166,7 @@ export async function pollRadar(radarConfig: RadarConfig): Promise<RadarChange[]
   store.getState().setRadarPolling(true);
 
   try {
-    const result = await fetchRadarPrs(radarConfig);
+    const result = await fetchRadarPrs(radarConfig, state.radarPrs, state.mergedRadarPrs);
     const hydratedOpen = preserveSnapshotDetails(state.radarPrs, result.openPrs);
     const hydratedMerged = preserveSnapshotDetails(state.mergedRadarPrs, result.mergedPrs);
     const stabilizedOpen = stabilizeCurrentSnapshot(state.radarPrs, hydratedOpen, missingStreaks);

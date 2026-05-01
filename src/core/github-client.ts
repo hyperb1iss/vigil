@@ -5,6 +5,8 @@ const DEFAULT_GITHUB_API_RETRIES = 3;
 const GITHUB_API_RETRY_BASE_DELAY_MS = 400;
 const DEFAULT_GITHUB_RATE_LIMIT_BACKOFF_MS = 60_000;
 const RATE_LIMIT_BACKOFF_BUFFER_MS = 1_000;
+const DEFAULT_GITHUB_GRAPHQL_MAX_CONCURRENCY = 2;
+const DEFAULT_GITHUB_GRAPHQL_MIN_DELAY_MS = 500;
 const GITHUB_VIEWER_LOGIN_QUERY = `
   query {
     viewer {
@@ -16,6 +18,7 @@ const GITHUB_VIEWER_LOGIN_QUERY = `
 let githubTokenPromise: Promise<string> | null = null;
 let viewerLoginPromise: Promise<string> | null = null;
 let githubRateLimitBackoffUntil = 0;
+let githubGraphqlLimiter = createGitHubRequestLimiter(getGitHubGraphqlPacingConfig());
 
 export class GitHubRateLimitError extends Error {
   constructor(public readonly retryAt?: number) {
@@ -31,6 +34,115 @@ export class GitHubRateLimitError extends Error {
 export interface GitHubGraphqlRequestOptions {
   timeoutMs?: number;
   attempts?: number;
+}
+
+interface GitHubGraphqlPacingConfig {
+  maxConcurrency: number;
+  minDelayMs: number;
+}
+
+interface GitHubRequestJob<T> {
+  run: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
+interface GitHubRequestLimiter {
+  schedule<T>(run: () => Promise<T>): Promise<T>;
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getGitHubGraphqlPacingConfig(
+  env: NodeJS.ProcessEnv = process.env
+): GitHubGraphqlPacingConfig {
+  return {
+    maxConcurrency: Math.max(
+      1,
+      parsePositiveInteger(
+        env.VIGIL_GITHUB_GRAPHQL_MAX_CONCURRENCY,
+        DEFAULT_GITHUB_GRAPHQL_MAX_CONCURRENCY
+      )
+    ),
+    minDelayMs: Math.max(
+      0,
+      parsePositiveInteger(
+        env.VIGIL_GITHUB_GRAPHQL_MIN_DELAY_MS,
+        DEFAULT_GITHUB_GRAPHQL_MIN_DELAY_MS
+      )
+    ),
+  };
+}
+
+function createGitHubRequestLimiter(config: GitHubGraphqlPacingConfig): GitHubRequestLimiter {
+  const queue: GitHubRequestJob<unknown>[] = [];
+  const maxConcurrency = Math.max(1, Math.floor(config.maxConcurrency));
+  const minDelayMs = Math.max(0, Math.floor(config.minDelayMs));
+  let active = 0;
+  let nextStartAt = 0;
+  let drainTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleDrain(): void {
+    if (drainTimer) {
+      return;
+    }
+
+    const delayMs = Math.max(0, nextStartAt - Date.now());
+    drainTimer = setTimeout(() => {
+      drainTimer = null;
+      drain();
+    }, delayMs);
+  }
+
+  function drain(): void {
+    if (active >= maxConcurrency || queue.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now < nextStartAt) {
+      scheduleDrain();
+      return;
+    }
+
+    const job = queue.shift();
+    if (!job) {
+      return;
+    }
+
+    active += 1;
+    nextStartAt = Date.now() + minDelayMs;
+
+    job
+      .run()
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        active -= 1;
+        drain();
+      });
+
+    drain();
+  }
+
+  return {
+    schedule<T>(run: () => Promise<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        queue.push({
+          run: run as () => Promise<unknown>,
+          resolve: resolve as (value: unknown) => void,
+          reject,
+        });
+        drain();
+      });
+    },
+  };
+}
+
+function resetGitHubGraphqlLimiter(): void {
+  githubGraphqlLimiter = createGitHubRequestLimiter(getGitHubGraphqlPacingConfig());
 }
 
 function resolveGitHubTokenFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -240,14 +352,18 @@ function readGitHubHeader(
 function getGitHubRateLimitRetryAt(error: unknown, now = Date.now()): number | undefined {
   const headers = getGitHubResponseHeaders(error);
   const retryAfter = Number.parseInt(readGitHubHeader(headers, 'retry-after') ?? '', 10);
+  let retryAt: number | undefined;
+
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return now + retryAfter * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
+    retryAt = now + retryAfter * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
   }
 
   const reset = Number.parseInt(readGitHubHeader(headers, 'x-ratelimit-reset') ?? '', 10);
-  if (Number.isFinite(reset) && reset > 0) {
-    return reset * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
+  if (retryAt === undefined && Number.isFinite(reset) && reset > 0) {
+    retryAt = reset * 1000 + RATE_LIMIT_BACKOFF_BUFFER_MS;
   }
+
+  return retryAt;
 }
 
 function isGitHubAuthFailure(error: unknown): boolean {
@@ -345,23 +461,34 @@ export async function runGitHubGraphqlWithRetry<TData>(
       throw new GitHubRateLimitError(backoffUntil);
     }
 
-    const { signal, dispose } = createAbortSignal(timeoutMs);
-
     try {
-      const token = await getGitHubToken();
-      const baseUrl = getConfiguredGitHubGraphqlBaseUrl();
-      const graphqlWithAuth = graphql.defaults({
-        ...(baseUrl ? { baseUrl } : {}),
-        headers: {
-          authorization: `token ${token}`,
-        },
-      });
+      return await githubGraphqlLimiter.schedule(async () => {
+        const queuedBackoffUntil = getGitHubRateLimitBackoffUntil();
+        if (queuedBackoffUntil) {
+          throw new GitHubRateLimitError(queuedBackoffUntil);
+        }
 
-      return await graphqlWithAuth<TData>(query, {
-        ...variables,
-        request: {
-          signal,
-        },
+        const { signal, dispose } = createAbortSignal(timeoutMs);
+
+        try {
+          const token = await getGitHubToken();
+          const baseUrl = getConfiguredGitHubGraphqlBaseUrl();
+          const graphqlWithAuth = graphql.defaults({
+            ...(baseUrl ? { baseUrl } : {}),
+            headers: {
+              authorization: `token ${token}`,
+            },
+          });
+
+          return await graphqlWithAuth<TData>(query, {
+            ...variables,
+            request: {
+              signal,
+            },
+          });
+        } finally {
+          dispose();
+        }
       });
     } catch (error) {
       lastError = error;
@@ -376,8 +503,6 @@ export async function runGitHubGraphqlWithRetry<TData>(
 
       const backoffMs = GITHUB_API_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
       await sleep(backoffMs);
-    } finally {
-      dispose();
     }
   }
 
@@ -403,14 +528,17 @@ function resetGitHubClientCaches(): void {
   githubTokenPromise = null;
   viewerLoginPromise = null;
   resetGitHubRateLimitBackoff();
+  resetGitHubGraphqlLimiter();
 }
 
 export const _internal = {
   buildGhAuthTokenArgs,
   classifyGitHubApiError,
+  createGitHubRequestLimiter,
   getConfiguredGitHubGraphqlBaseUrl,
   getGitHubErrorStatus,
   getGitHubErrorText,
+  getGitHubGraphqlPacingConfig,
   getGitHubRateLimitBackoffUntil,
   getGitHubRateLimitRetryAt,
   getGitHubResponseHeaders,

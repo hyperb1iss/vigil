@@ -8,7 +8,7 @@ import { hideBin } from 'yargs/helpers';
 import { getAgentLogPath, logAgentActivity } from './agents/activity-log.js';
 import { startActionExecutor } from './agents/executor.js';
 import { handleEvents } from './agents/orchestrator.js';
-import { App } from './app.js';
+import { App, type AppProps } from './app.js';
 import { runInit } from './config/init.js';
 import { ensureDirectories, loadGlobalConfig } from './config/loader.js';
 import { loadRuntimeRepoContexts } from './config/runtime.js';
@@ -517,7 +517,8 @@ async function main(): Promise<void> {
   const stopActionWatcher = watchPendingActions(config.notifications.enabled);
 
   // Render TUI
-  const { waitUntilExit } = render(React.createElement(App));
+  const appProps: AppProps = { repos, repoContexts };
+  const { waitUntilExit } = render(React.createElement<AppProps>(App, appProps));
 
   try {
     await waitUntilExit();

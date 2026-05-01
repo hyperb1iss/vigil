@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { fetchPrDetail } from './core/github.js';
-import { resetGitHubRateLimitBackoff } from './core/github-client.js';
 import { poll } from './core/poller.js';
 import { pollRadar } from './core/radar-poller.js';
 import { vigilStore } from './store/index.js';
@@ -26,6 +25,7 @@ import {
 import { icons, palette, semantic } from './tui/theme.js';
 import type { MouseEvent } from './tui/use-mouse.js';
 import { useMouse } from './tui/use-mouse.js';
+import type { RepoRuntimeContext } from './types/config.js';
 import type { PullRequest } from './types/pr.js';
 
 const MIN_COLS = 80;
@@ -59,6 +59,11 @@ interface DetailMouseTarget {
   items: ReturnType<typeof buildDetailItems>;
   layout: ReturnType<typeof measureDetailViewport>['layout'];
   navigatorBodyRow: number | null;
+}
+
+export interface AppProps {
+  repos?: string[] | undefined;
+  repoContexts?: Map<string, RepoRuntimeContext> | undefined;
 }
 
 function isDetailAgentRunning(
@@ -236,7 +241,8 @@ function TooSmall({ cols, rows }: { cols: number; rows: number }): JSX.Element {
   );
 }
 
-export function App(): JSX.Element {
+export function App(props: AppProps = {}): JSX.Element {
+  const { repos, repoContexts } = props;
   const { exit } = useApp();
   const { stdout } = useStdout();
   const view = useStore(vigilStore, s => s.view);
@@ -377,8 +383,7 @@ export function App(): JSX.Element {
           setMode(mode === 'hitl' ? 'yolo' : 'hitl');
           return true;
         case 'r': {
-          resetGitHubRateLimitBackoff();
-          void poll();
+          void poll(repos, repoContexts);
           const state = vigilStore.getState();
           if (state.config.radar.enabled) {
             void pollRadar(state.config.radar);
@@ -404,7 +409,7 @@ export function App(): JSX.Element {
           return false;
       }
     },
-    [exit, focusedPr, mode, setMode, setSearchQuery, setView, view]
+    [exit, focusedPr, mode, repoContexts, repos, setMode, setSearchQuery, setView, view]
   );
 
   /** Handle keys that work globally regardless of view. Returns true if handled. */

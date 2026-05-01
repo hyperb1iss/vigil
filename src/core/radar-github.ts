@@ -186,6 +186,18 @@ interface GhGraphqlRepoPage {
   } | null;
 }
 
+interface GhGraphqlRepoSnapshotPr {
+  number: number;
+  updatedAt: string;
+  mergedAt?: string | null;
+}
+
+interface GhGraphqlRepoSnapshotPage {
+  repository?: {
+    pullRequests?: GhConnection<GhGraphqlRepoSnapshotPr> | null;
+  } | null;
+}
+
 interface GhGraphqlSearchPage<TNode> {
   search?: GhConnection<TNode> | null;
 }
@@ -198,10 +210,19 @@ interface GhPrFilesResponse {
   } | null;
 }
 
+interface RadarRepoSnapshotCacheEntry {
+  fingerprint: string;
+  snapshot: Map<number, string>;
+  hydratedAt: number;
+}
+
 const RADAR_RETRY_ATTEMPTS = 2;
 const RADAR_GH_TIMEOUT_MS = 12_000;
 const RADAR_GRAPHQL_SEARCH_CEILING = 1000;
 const DIRECT_REVIEW_DETAIL_CONCURRENCY = 6;
+const RADAR_REPO_FULL_REFRESH_MS = 15 * 60_000;
+const radarOpenSnapshotCache = new Map<string, RadarRepoSnapshotCacheEntry>();
+const radarMergedSnapshotCache = new Map<string, RadarRepoSnapshotCacheEntry>();
 const PR_FILES_QUERY = `
   query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
     repository(owner: $owner, name: $repo) {
@@ -433,12 +454,47 @@ const RADAR_OPEN_QUERY = `
   }
 `;
 
+const RADAR_OPEN_SNAPSHOT_QUERY = `
+  query($owner: String!, $repo: String!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, after: $endCursor, states: [OPEN], orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          number
+          updatedAt
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
+
 const RADAR_MERGED_QUERY = `
   query($owner: String!, $repo: String!, $endCursor: String) {
     repository(owner: $owner, name: $repo) {
       pullRequests(first: 100, after: $endCursor, states: [MERGED], orderBy: { field: UPDATED_AT, direction: DESC }) {
         nodes {
           ${RADAR_PR_NODE_FIELDS}
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
+
+const RADAR_MERGED_SNAPSHOT_QUERY = `
+  query($owner: String!, $repo: String!, $endCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, after: $endCursor, states: [MERGED], orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          number
+          updatedAt
+          mergedAt
         }
         pageInfo {
           hasNextPage
@@ -808,12 +864,33 @@ async function fetchPrFiles(repo: string, number: number): Promise<string[]> {
   return paths;
 }
 
+async function fetchRepoOpenSnapshot(repo: string): Promise<Map<number, string>> {
+  return buildRadarRepoSnapshot(
+    await runRepoPullRequestQuery<GhGraphqlRepoSnapshotPr>(repo, RADAR_OPEN_SNAPSHOT_QUERY)
+  );
+}
+
+async function fetchRepoMergedSnapshot(
+  repo: string,
+  maxAgeMs: number
+): Promise<Map<number, string>> {
+  return buildRadarRepoSnapshot(
+    await runRepoPullRequestQuery<GhGraphqlRepoSnapshotPr>(
+      repo,
+      RADAR_MERGED_SNAPSHOT_QUERY,
+      pageNodes =>
+        pageNodes.length > 0 &&
+        pageNodes.every(node => isPastAgeLimit(node.mergedAt ?? node.updatedAt, maxAgeMs))
+    )
+  );
+}
+
 async function fetchRepoOpenPrs(repo: string): Promise<GhGraphqlRadarPr[]> {
-  return runRepoPullRequestQuery(repo, RADAR_OPEN_QUERY);
+  return runRepoPullRequestQuery<GhGraphqlRadarPr>(repo, RADAR_OPEN_QUERY);
 }
 
 async function fetchRepoMergedPrs(repo: string, maxAgeMs: number): Promise<GhGraphqlRadarPr[]> {
-  return runRepoPullRequestQuery(
+  return runRepoPullRequestQuery<GhGraphqlRadarPr>(
     repo,
     RADAR_MERGED_QUERY,
     pageNodes =>
@@ -864,6 +941,86 @@ function directReviewReason(viewerLogin: string): RelevanceReason[] {
 
 function buildMergedSearchQuery(repo: string, mergedAfter: string): string {
   return `repo:${repo} is:pr is:merged merged:>=${mergedAfter}`;
+}
+
+function buildRadarRepoFingerprint(
+  config: RadarConfig,
+  repoConfig: RadarRepoConfig,
+  kind: 'open' | 'merged'
+): string {
+  return JSON.stringify({
+    kind,
+    repoConfig,
+    teams: config.teams,
+    excludeBotDrafts: config.excludeBotDrafts,
+    excludeOwnPrs: config.excludeOwnPrs,
+    staleCutoffDays: config.staleCutoffDays,
+    merged: kind === 'merged' ? config.merged : undefined,
+  });
+}
+
+function buildRadarRepoSnapshot(nodes: GhGraphqlRepoSnapshotPr[]): Map<number, string> {
+  const snapshot = new Map<number, string>();
+  for (const node of nodes) {
+    snapshot.set(node.number, `${node.updatedAt}\u0000${node.mergedAt ?? ''}`);
+  }
+  return snapshot;
+}
+
+function snapshotsEqual(left: Map<number, string>, right: Map<number, string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const [number, value] of left) {
+    if (right.get(number) !== value) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function canReuseRadarSnapshot(
+  cache: RadarRepoSnapshotCacheEntry | undefined,
+  fingerprint: string,
+  now = Date.now()
+): cache is RadarRepoSnapshotCacheEntry {
+  return (
+    cache !== undefined &&
+    cache.fingerprint === fingerprint &&
+    now - cache.hydratedAt < RADAR_REPO_FULL_REFRESH_MS
+  );
+}
+
+function setRadarRepoSnapshotCache(
+  cache: Map<string, RadarRepoSnapshotCacheEntry>,
+  repo: string,
+  fingerprint: string,
+  snapshot: Map<number, string>
+): void {
+  cache.set(repo, {
+    fingerprint,
+    snapshot,
+    hydratedAt: Date.now(),
+  });
+}
+
+function copyPreviousRepoRadar(
+  repo: string,
+  previous: Map<string, RadarPr> | undefined,
+  target: Map<string, RadarPr>,
+  shouldKeep: (radarPr: RadarPr) => boolean
+): void {
+  if (!previous) {
+    return;
+  }
+
+  for (const [key, radarPr] of previous) {
+    if (radarPr.pr.repository.nameWithOwner === repo && shouldKeep(radarPr)) {
+      target.set(key, radarPr);
+    }
+  }
 }
 
 function splitRepo(repo: string): { owner: string; name: string } {
@@ -982,17 +1139,17 @@ function flattenGraphqlRadarPr(raw: GhGraphqlRadarPr): GhRadarPr {
   };
 }
 
-async function runRepoPullRequestQuery(
+async function runRepoPullRequestQuery<TNode>(
   repo: string,
   query: string,
-  stopAfterPage?: ((pageNodes: GhGraphqlRadarPr[]) => boolean) | undefined
-): Promise<GhGraphqlRadarPr[]> {
+  stopAfterPage?: ((pageNodes: TNode[]) => boolean) | undefined
+): Promise<TNode[]> {
   const { owner, name } = splitRepo(repo);
-  const results: GhGraphqlRadarPr[] = [];
+  const results: TNode[] = [];
   let endCursor: string | undefined;
 
   for (;;) {
-    const page = await runGitHubGraphqlWithRetry<GhGraphqlRepoPage>(
+    const page = await runGitHubGraphqlWithRetry<GhGraphqlRepoPage | GhGraphqlRepoSnapshotPage>(
       query,
       {
         owner,
@@ -1004,7 +1161,7 @@ async function runRepoPullRequestQuery(
         timeoutMs: RADAR_GH_TIMEOUT_MS,
       }
     );
-    const connection = page.repository?.pullRequests;
+    const connection = page.repository?.pullRequests as GhConnection<TNode> | null | undefined;
     const pageNodes = flattenConnectionNodes(connection?.nodes);
     results.push(...pageNodes);
     if (stopAfterPage?.(pageNodes)) {
@@ -1089,9 +1246,29 @@ async function collectOpenRepoRadar(
   config: RadarConfig,
   repoConfig: RadarRepoConfig,
   viewerLogin: string,
-  openPrs: Map<string, RadarPr>
+  openPrs: Map<string, RadarPr>,
+  previousOpenPrs?: Map<string, RadarPr> | undefined
 ): Promise<void> {
+  const fingerprint = buildRadarRepoFingerprint(config, repoConfig, 'open');
+  const cached = radarOpenSnapshotCache.get(repoConfig.repo);
+  if (previousOpenPrs && canReuseRadarSnapshot(cached, fingerprint)) {
+    const snapshot = await fetchRepoOpenSnapshot(repoConfig.repo);
+    if (snapshotsEqual(cached.snapshot, snapshot)) {
+      copyPreviousRepoRadar(repoConfig.repo, previousOpenPrs, openPrs, radarPr => {
+        return !shouldExcludePr(radarPr.pr, config, repoConfig, viewerLogin);
+      });
+      return;
+    }
+  }
+
   const rawOpenPrs = await fetchRepoOpenPrs(repoConfig.repo);
+  setRadarRepoSnapshotCache(
+    radarOpenSnapshotCache,
+    repoConfig.repo,
+    fingerprint,
+    buildRadarRepoSnapshot(rawOpenPrs)
+  );
+
   for (const raw of rawOpenPrs) {
     const flattened = flattenGraphqlRadarPr(raw);
     let pr = buildPullRequest(flattened, repoConfig.repo);
@@ -1109,12 +1286,31 @@ async function collectMergedRepoRadar(
   config: RadarConfig,
   repoConfig: RadarRepoConfig,
   viewerLogin: string,
-  mergedPrs: Map<string, RadarPr>
+  mergedPrs: Map<string, RadarPr>,
+  previousMergedPrs?: Map<string, RadarPr> | undefined
 ): Promise<void> {
   if (config.merged.limit <= 0) return;
 
   const maxAgeMs = config.merged.maxAgeHours * 60 * 60 * 1000;
+  const fingerprint = buildRadarRepoFingerprint(config, repoConfig, 'merged');
+  const cached = radarMergedSnapshotCache.get(repoConfig.repo);
+  if (previousMergedPrs && canReuseRadarSnapshot(cached, fingerprint)) {
+    const snapshot = await fetchRepoMergedSnapshot(repoConfig.repo, maxAgeMs);
+    if (snapshotsEqual(cached.snapshot, snapshot)) {
+      copyPreviousRepoRadar(repoConfig.repo, previousMergedPrs, mergedPrs, radarPr => {
+        return !isPastAgeLimit(radarPr.pr.mergedAt ?? radarPr.pr.updatedAt, maxAgeMs);
+      });
+      return;
+    }
+  }
+
   const rawMergedPrs = await fetchRepoMergedPrs(repoConfig.repo, maxAgeMs);
+  setRadarRepoSnapshotCache(
+    radarMergedSnapshotCache,
+    repoConfig.repo,
+    fingerprint,
+    buildRadarRepoSnapshot(rawMergedPrs)
+  );
 
   for (const raw of rawMergedPrs) {
     const flattened = flattenGraphqlRadarPr(raw);
@@ -1150,7 +1346,11 @@ function limitMergedPrs(mergedPrs: Map<string, RadarPr>, limit: number): Map<str
   return limited;
 }
 
-export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResult> {
+export async function fetchRadarPrs(
+  config: RadarConfig,
+  previousOpenPrs?: Map<string, RadarPr> | undefined,
+  previousMergedPrs?: Map<string, RadarPr> | undefined
+): Promise<RadarFetchResult> {
   const viewerLogin = await getViewerLogin();
   const openPrs = new Map<string, RadarPr>();
   const mergedPrs = new Map<string, RadarPr>();
@@ -1159,8 +1359,8 @@ export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResu
     collectDirectReviewRadar(config, viewerLogin, openPrs),
     ...config.repos.map(async repoConfig => {
       await Promise.all([
-        collectOpenRepoRadar(config, repoConfig, viewerLogin, openPrs),
-        collectMergedRepoRadar(config, repoConfig, viewerLogin, mergedPrs),
+        collectOpenRepoRadar(config, repoConfig, viewerLogin, openPrs, previousOpenPrs),
+        collectMergedRepoRadar(config, repoConfig, viewerLogin, mergedPrs, previousMergedPrs),
       ]);
     }),
   ]);
@@ -1174,13 +1374,18 @@ export async function fetchRadarPrs(config: RadarConfig): Promise<RadarFetchResu
 
 export const _internal = {
   buildMergedSearchQuery,
+  buildRadarRepoFingerprint,
+  buildRadarRepoSnapshot,
   buildDirectReviewSearchQuery,
   buildSearchPullRequest,
+  canReuseRadarSnapshot,
   connectionHasNextPage,
+  copyPreviousRepoRadar,
   directReviewReason,
   isGraphqlRadarPrFilesTruncated,
   isGraphqlRadarPrMetadataTruncated,
   limitMergedPrs,
   shouldExcludeDirectReviewPr,
   shouldExcludePr,
+  snapshotsEqual,
 };

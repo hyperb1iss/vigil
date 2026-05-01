@@ -99,6 +99,50 @@ describe('radar github internals', () => {
     expect([...limited.keys()]).toEqual(['owner/repo#2', 'owner/repo#3']);
   });
 
+  test('repo snapshots compare PR identity and update timestamps', () => {
+    const snapshot = _internal.buildRadarRepoSnapshot([
+      { number: 1, updatedAt: '2026-04-10T00:00:00Z' },
+      { number: 2, updatedAt: '2026-04-11T00:00:00Z', mergedAt: '2026-04-12T00:00:00Z' },
+    ]);
+
+    expect(
+      _internal.snapshotsEqual(
+        snapshot,
+        _internal.buildRadarRepoSnapshot([
+          { number: 1, updatedAt: '2026-04-10T00:00:00Z' },
+          { number: 2, updatedAt: '2026-04-11T00:00:00Z', mergedAt: '2026-04-12T00:00:00Z' },
+        ])
+      )
+    ).toBe(true);
+
+    expect(
+      _internal.snapshotsEqual(
+        snapshot,
+        _internal.buildRadarRepoSnapshot([
+          { number: 1, updatedAt: '2026-04-10T00:00:00Z' },
+          { number: 2, updatedAt: '2026-04-13T00:00:00Z', mergedAt: '2026-04-12T00:00:00Z' },
+        ])
+      )
+    ).toBe(false);
+  });
+
+  test('cached repo snapshots expire and are scoped to config fingerprints', () => {
+    const fingerprint = _internal.buildRadarRepoFingerprint(
+      makeRadarConfig(),
+      makeRepoConfig(),
+      'open'
+    );
+    const cache = {
+      fingerprint,
+      snapshot: new Map([[1, '2026-04-10T00:00:00Z']]),
+      hydratedAt: 10_000,
+    };
+
+    expect(_internal.canReuseRadarSnapshot(cache, fingerprint, 20_000)).toBe(true);
+    expect(_internal.canReuseRadarSnapshot(cache, 'different', 20_000)).toBe(false);
+    expect(_internal.canReuseRadarSnapshot(cache, fingerprint, 20 * 60_000)).toBe(false);
+  });
+
   test('watchAll bypasses stale-cutoff filtering for slower personal repos', () => {
     const stalePr = makePr({
       state: 'OPEN',

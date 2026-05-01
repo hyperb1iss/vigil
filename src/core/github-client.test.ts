@@ -79,6 +79,56 @@ describe('buildGhAuthTokenArgs', () => {
   });
 });
 
+describe('GitHub GraphQL pacing', () => {
+  test('reads pacing env overrides with safe fallbacks', () => {
+    expect(
+      _internal.getGitHubGraphqlPacingConfig({
+        VIGIL_GITHUB_GRAPHQL_MAX_CONCURRENCY: '4',
+        VIGIL_GITHUB_GRAPHQL_MIN_DELAY_MS: '250',
+      } as NodeJS.ProcessEnv)
+    ).toEqual({
+      maxConcurrency: 4,
+      minDelayMs: 250,
+    });
+
+    expect(
+      _internal.getGitHubGraphqlPacingConfig({
+        VIGIL_GITHUB_GRAPHQL_MAX_CONCURRENCY: 'nope',
+        VIGIL_GITHUB_GRAPHQL_MIN_DELAY_MS: '-1',
+      } as NodeJS.ProcessEnv)
+    ).toEqual({
+      maxConcurrency: 2,
+      minDelayMs: 500,
+    });
+  });
+
+  test('serializes queued requests when concurrency is one', async () => {
+    const limiter = _internal.createGitHubRequestLimiter({ maxConcurrency: 1, minDelayMs: 0 });
+    const events: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+
+    const first = limiter.schedule(async () => {
+      events.push('first:start');
+      await new Promise<void>(resolve => {
+        releaseFirst = resolve;
+      });
+      events.push('first:end');
+      return 'first';
+    });
+    const second = limiter.schedule(async () => {
+      events.push('second:start');
+      return 'second';
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual(['first:start']);
+
+    releaseFirst?.();
+    await expect(Promise.all([first, second])).resolves.toEqual(['first', 'second']);
+    expect(events).toEqual(['first:start', 'first:end', 'second:start']);
+  });
+});
+
 describe('classifyGitHubApiError', () => {
   test('maps auth failures to a clear login message', () => {
     const error = _internal.classifyGitHubApiError({
